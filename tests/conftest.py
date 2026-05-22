@@ -91,6 +91,21 @@ def mock_client(state_pool_running: DeviceState) -> MagicMock:
 
     client.add_listener = MagicMock(side_effect=_add_listener)
     client.listeners = listeners
+
+    connection_listeners: list[Callable[[bool], None]] = []
+
+    def _add_connection_listener(
+        callback: Callable[[bool], None],
+    ) -> Callable[[], None]:
+        connection_listeners.append(callback)
+        return (
+            lambda: connection_listeners.remove(callback)
+            if callback in connection_listeners
+            else None
+        )
+
+    client.add_connection_listener = MagicMock(side_effect=_add_connection_listener)
+    client.connection_listeners = connection_listeners
     return client
 
 

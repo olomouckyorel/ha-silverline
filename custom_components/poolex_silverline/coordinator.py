@@ -47,6 +47,7 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         )
         self.client = client
         self._unsub_push: Callable[[], None] | None = None
+        self._unsub_connection: Callable[[], None] | None = None
 
     async def _async_setup(self) -> None:
         try:
@@ -54,6 +55,9 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         except CannotConnect as err:
             raise UpdateFailed(f"connect failed: {err}") from err
         self._unsub_push = self.client.add_listener(self._handle_push)
+        self._unsub_connection = self.client.add_connection_listener(
+            self._handle_connection_change
+        )
         self.device_info = await self.client.get_device_info()
 
     async def _async_update_data(self) -> DeviceState:
@@ -68,9 +72,23 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
     def _handle_push(self, state: DeviceState) -> None:
         self.async_set_updated_data(state)
 
+    @callback
+    def _handle_connection_change(self, connected: bool) -> None:
+        # When the socket drops, mark the last update as failed so entities
+        # surface `unavailable`. On recovery, request a fresh refresh so the
+        # state caught between the drop and the next 30s poll lands fast.
+        if connected:
+            self.hass.async_create_task(self.async_request_refresh())
+        else:
+            self.last_update_success = False
+            self.async_update_listeners()
+
     async def async_shutdown(self) -> None:
         if self._unsub_push is not None:
             self._unsub_push()
             self._unsub_push = None
+        if self._unsub_connection is not None:
+            self._unsub_connection()
+            self._unsub_connection = None
         await self.client.disconnect()
         await super().async_shutdown()
