@@ -30,6 +30,8 @@ def _bit(state: DeviceState, position: int) -> bool | None:
 @dataclass(frozen=True, kw_only=True)
 class SilverlineBinarySensorDescription(BinarySensorEntityDescription):
     value_fn: Callable[[DeviceState], bool | None]
+    # See SilverlineSensorDescription.dp_keys — same firmware-capability gate.
+    dp_keys: tuple[str, ...]
 
 
 BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
@@ -38,6 +40,7 @@ BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
         translation_key="water_pump",
         device_class=BinarySensorDeviceClass.RUNNING,
         value_fn=lambda d: d.water_pump,
+        dp_keys=("111",),
     ),
     SilverlineBinarySensorDescription(
         key="fault_water_flow",
@@ -45,6 +48,7 @@ BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _bit(d, 0),
+        dp_keys=("13",),
     ),
     SilverlineBinarySensorDescription(
         key="fault_antifreeze",
@@ -52,6 +56,7 @@ BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _bit(d, 1),
+        dp_keys=("13",),
     ),
     SilverlineBinarySensorDescription(
         key="fault_high_pressure",
@@ -59,6 +64,7 @@ BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _bit(d, 2),
+        dp_keys=("13",),
     ),
     SilverlineBinarySensorDescription(
         key="fault_low_pressure",
@@ -66,6 +72,7 @@ BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _bit(d, 3),
+        dp_keys=("13",),
     ),
     SilverlineBinarySensorDescription(
         key="fault_communication",
@@ -73,6 +80,7 @@ BINARY_SENSORS: tuple[SilverlineBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _bit(d, 4),
+        dp_keys=("13",),
     ),
 )
 
@@ -83,9 +91,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
+    supported = coordinator.supported_dps
     async_add_entities(
         SilverlineBinarySensor(coordinator, description)
         for description in BINARY_SENSORS
+        if set(description.dp_keys) <= supported
     )
 
 

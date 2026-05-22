@@ -48,6 +48,9 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         self.client = client
         self._unsub_push: Callable[[], None] | None = None
         self._unsub_connection: Callable[[], None] | None = None
+        # Set on first successful poll. Lets platforms skip entities whose
+        # backing DP this firmware variant never reports.
+        self.supported_dps: frozenset[str] = frozenset()
 
     async def _async_setup(self) -> None:
         try:
@@ -62,11 +65,17 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
 
     async def _async_update_data(self) -> DeviceState:
         try:
-            return await self.client.get_status()
+            state = await self.client.get_status()
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed(err) from err
         except CannotConnect as err:
             raise UpdateFailed(f"poll failed: {err}") from err
+        # Snapshot the DPs the firmware actually emits, once. Platforms
+        # read this in their async_setup_entry to skip entities that would
+        # otherwise spend their whole lifetime `unavailable`.
+        if not self.supported_dps:
+            self.supported_dps = frozenset(state.raw.keys())
+        return state
 
     @callback
     def _handle_push(self, state: DeviceState) -> None:

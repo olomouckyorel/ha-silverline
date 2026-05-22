@@ -79,6 +79,15 @@ def state_pool_off() -> DeviceState:
 
 
 @pytest.fixture
+def state_minimal_firmware() -> DeviceState:
+    """A device that exposes only DPs 1, 2, 3, 4, 13 (PC-SLP090N "minimal"
+    Poolex firmware variant, verified live)."""
+    return DeviceState.from_dps(
+        {"1": True, "2": 27, "3": 28, "4": "Heat", "13": 0}
+    )
+
+
+@pytest.fixture
 def mock_client(state_pool_running: DeviceState) -> MagicMock:
     """A mock SilverlineClient instance whose calls succeed by default."""
     client = MagicMock()

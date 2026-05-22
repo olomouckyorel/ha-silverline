@@ -45,6 +45,11 @@ class SilverlineSensorDescription(SensorEntityDescription):
     """Sensor description that pulls a value from DeviceState."""
 
     value_fn: Callable[[DeviceState], float | int | str | None]
+    # DPs (as wire-string keys) the value_fn depends on. The sensor is
+    # only registered if every key is present in the device's first
+    # DP_QUERY response, so firmware variants that don't expose a DP
+    # never leak `unavailable` entities into the registry.
+    dp_keys: tuple[str, ...]
 
 
 SENSORS: tuple[SilverlineSensorDescription, ...] = (
@@ -56,6 +61,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.exhaust_temp,
+        dp_keys=("101",),
     ),
     SilverlineSensorDescription(
         key="return_temperature",
@@ -65,6 +71,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.return_temp,
+        dp_keys=("102",),
     ),
     SilverlineSensorDescription(
         key="coil_temperature",
@@ -74,6 +81,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.coil_temp,
+        dp_keys=("103",),
     ),
     SilverlineSensorDescription(
         key="ambient_temperature",
@@ -83,6 +91,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.ambient_temp,
+        dp_keys=("104",),
     ),
     SilverlineSensorDescription(
         key="inlet_temperature",
@@ -92,6 +101,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.inlet_temp,
+        dp_keys=("105",),
     ),
     SilverlineSensorDescription(
         key="outlet_temperature",
@@ -101,6 +111,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.outlet_temp,
+        dp_keys=("106",),
     ),
     SilverlineSensorDescription(
         key="target_frequency",
@@ -111,6 +122,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.target_frequency,
+        dp_keys=("107",),
     ),
     SilverlineSensorDescription(
         key="actual_frequency",
@@ -120,6 +132,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.actual_frequency,
+        dp_keys=("108",),
     ),
     SilverlineSensorDescription(
         key="eev_steps",
@@ -129,6 +142,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.eev_steps,
+        dp_keys=("109",),
     ),
     SilverlineSensorDescription(
         key="fan_speed",
@@ -138,6 +152,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.fan_speed,
+        dp_keys=("110",),
     ),
     SilverlineSensorDescription(
         key="fault_code",
@@ -146,6 +161,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         options=_FAULT_OPTIONS,
         value_fn=lambda d: _decode_fault(d.fault),
+        dp_keys=("13",),
     ),
 )
 
@@ -156,8 +172,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
+    supported = coordinator.supported_dps
     async_add_entities(
-        SilverlineSensor(coordinator, description) for description in SENSORS
+        SilverlineSensor(coordinator, description)
+        for description in SENSORS
+        if set(description.dp_keys) <= supported
     )
 
 
