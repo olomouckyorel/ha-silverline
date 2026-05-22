@@ -1,7 +1,7 @@
 {
   "domain": "poolex_silverline",
   "name": "Poolex Silverline",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "codeowners": ["@christian-reiss"],
   "config_flow": true,
   "documentation": "https://github.com/christian-reiss/ha-silverline",

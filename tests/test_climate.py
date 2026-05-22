@@ -340,6 +340,115 @@ async def test_set_hvac_mode_sleeps_after_non_off_write(
     assert climate_mod._MODE_TRANSITION_SETTLE in recorded
 
 
+# ---------------------------------------------------------------------------
+# hvac_action — what HA uses to colorize the climate icon per operation state
+# ---------------------------------------------------------------------------
+
+
+async def test_hvac_action_off_when_power_off(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    from homeassistant.components.climate import HVACAction
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": False, "4": "Heat", "2": 27, "3": 26})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.OFF
+
+
+async def test_hvac_action_heating_when_under_target(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Minimal-firmware (no DP 108): infer heating from temp_current<target."""
+    from homeassistant.components.climate import HVACAction
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "4": "Heat", "2": 30, "3": 26, "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.HEATING
+
+
+async def test_hvac_action_idle_when_at_target(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Heat mode, target reached → IDLE so the icon goes greyish, not orange."""
+    from homeassistant.components.climate import HVACAction
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "4": "Heat", "2": 27, "3": 27, "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.IDLE
+
+
+async def test_hvac_action_cooling_when_over_target(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    from homeassistant.components.climate import HVACAction
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "4": "Cool", "2": 22, "3": 25, "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.COOLING
+
+
+async def test_hvac_action_uses_compressor_freq_when_available(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Authoritative path: DP 108 actual_frequency > 0 means heating
+    regardless of the temp delta (compressor may be spinning even after
+    target was met, ramping down)."""
+    from homeassistant.components.climate import HVACAction
+    coordinator = init_integration.runtime_data
+    # current >= target, but compressor still spinning → HEATING
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps(
+            {"1": True, "4": "Heat", "2": 27, "3": 27, "108": 35, "13": 0}
+        )
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.HEATING
+
+    # compressor parked, in Heat mode → IDLE
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps(
+            {"1": True, "4": "Heat", "2": 27, "3": 25, "108": 0, "13": 0}
+        )
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.IDLE
+
+
+async def test_hvac_action_auto_picks_direction_from_temp(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """In Auto/HEAT_COOL the temp delta picks the action direction."""
+    from homeassistant.components.climate import HVACAction
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "4": "Auto", "2": 27, "3": 25, "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.HEATING
+
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "4": "Auto", "2": 25, "3": 27, "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["hvac_action"] == HVACAction.COOLING
+
+
 async def test_set_hvac_off_does_not_sleep(
     hass: HomeAssistant, mock_client_factory, init_integration, monkeypatch
 ) -> None:

@@ -782,6 +782,7 @@
       'attributes': ReadOnlyDict({
         'current_temperature': 26,
         'friendly_name': 'Pool Heatpump',
+        'hvac_action': <HVACAction.HEATING: 'heating'>,
         'hvac_modes': list([
           <HVACMode.OFF: 'off'>,
           <HVACMode.HEAT: 'heat'>,
