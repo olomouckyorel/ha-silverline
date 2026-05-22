@@ -49,7 +49,8 @@ async def test_firmware_capability_filter_skips_missing_dps(
     state_minimal_firmware: DeviceState,
 ) -> None:
     """A firmware that only emits DPs 1,2,3,4,13 (verified live on
-    PC-SLP090N) should produce: 1 climate, 1 fault-code sensor, and
+    PC-SLP090N) should produce: 1 climate, 1 fault-code sensor, the
+    compressor-running binary sensor (DPs 1+4 are always present), and
     5 fault binary sensors — and nothing else. The 10 diagnostic
     temperature/frequency/eev/fan sensors and the water-pump binary
     sensor (DPs 101-111) must NOT register."""
@@ -68,6 +69,7 @@ async def test_firmware_capability_filter_skips_missing_dps(
     assert entity_ids == [
         "binary_sensor.pool_heatpump_antifreeze_fault",
         "binary_sensor.pool_heatpump_communication_fault",
+        "binary_sensor.pool_heatpump_compressor",
         "binary_sensor.pool_heatpump_high_pressure_fault",
         "binary_sensor.pool_heatpump_low_pressure_fault",
         "binary_sensor.pool_heatpump_water_flow_fault",
@@ -80,7 +82,7 @@ async def test_full_firmware_registers_everything(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:
     """When the device exposes the full DP set (state_pool_running has
-    1-13 + 101-111), all 18 entities register. Guards against the
+    1-13 + 101-111), all 19 entities register. Guards against the
     capability filter accidentally dropping entities on full firmware."""
     registry = er.async_get(hass)
     entity_ids = sorted(
@@ -88,7 +90,7 @@ async def test_full_firmware_registers_everything(
         for e in registry.entities.values()
         if e.config_entry_id == init_integration.entry_id
     )
-    assert len(entity_ids) == 18
+    assert len(entity_ids) == 19
 
 
 async def test_async_setup_starts_discovery_task(
