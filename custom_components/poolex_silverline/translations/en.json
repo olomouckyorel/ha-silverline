@@ -125,6 +125,25 @@
     },
     "number": {
       "target_temperature": { "name": "Target temperature" }
+    },
+    "select": {
+      "preset_mode": {
+        "name": "Preset",
+        "state": {
+          "none": "Inverter",
+          "boost": "Boost",
+          "eco": "Silent"
+        }
+      },
+      "operating_mode": {
+        "name": "Operating mode",
+        "state": {
+          "off": "Off",
+          "heat": "Heat",
+          "cool": "Cool",
+          "heat_cool": "Auto"
+        }
+      }
     }
   },
   "issues": {

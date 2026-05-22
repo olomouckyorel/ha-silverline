@@ -33,6 +33,7 @@
       "fault_low_pressure": { "default": "mdi:gauge-low" },
       "fault_communication": { "default": "mdi:lan-disconnect" }
     },
+<<<<<<< HEAD
     "switch": {
       "power": {
         "default": "mdi:power",
@@ -43,6 +44,11 @@
     },
     "number": {
       "target_temperature": { "default": "mdi:thermometer" }
+=======
+    "select": {
+      "preset_mode": { "default": "mdi:tune" },
+      "operating_mode": { "default": "mdi:home-thermometer" }
+>>>>>>> worker-12
     }
   }
 }
