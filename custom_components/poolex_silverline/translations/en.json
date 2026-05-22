@@ -42,6 +42,16 @@
           "device_id": "Must match the device that was originally added.",
           "local_key": "16-character device-specific encryption key."
         }
+      },
+      "discovery_confirm": {
+        "title": "Add discovered Poolex Silverline",
+        "description": "A heat pump was discovered at {host}. Enter its local key to finish setup.",
+        "data": {
+          "local_key": "Local key"
+        },
+        "data_description": {
+          "local_key": "16-character device-specific encryption key from the Tuya cloud console."
+        }
       }
     },
     "error": {

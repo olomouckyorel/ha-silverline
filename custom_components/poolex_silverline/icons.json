@@ -2,7 +2,13 @@
   "entity": {
     "climate": {
       "heatpump": {
-        "default": "mdi:hot-tub"
+        "default": "mdi:heat-pump",
+        "state": {
+          "off": "mdi:heat-pump-outline",
+          "heat": "mdi:heat-pump",
+          "cool": "mdi:heat-pump",
+          "heat_cool": "mdi:heat-pump"
+        }
       }
     },
     "sensor": {

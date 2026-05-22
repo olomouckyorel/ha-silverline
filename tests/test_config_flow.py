@@ -158,3 +158,79 @@ async def test_user_flow_disconnect_called_after_validation(
     flow_id = await _start_user_flow(hass)
     await hass.config_entries.flow.async_configure(flow_id, ENTRY_DATA)
     assert mock_client_factory.disconnect.called
+
+
+# ---------------------------------------------------------------------------
+# Integration-discovery flow (Gold rules `discovery` + `discovery-update-info`)
+# ---------------------------------------------------------------------------
+
+
+async def test_discovery_flow_happy_path(
+    hass: HomeAssistant, mock_client_factory
+) -> None:
+    """A UDP broadcast triggers the flow; user supplies local_key only;
+    entry is created with host + device_id from the broadcast."""
+    from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_INTEGRATION_DISCOVERY},
+        data={"device_id": DEVICE_ID, "ip": HOST, "version": "3.3"},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "discovery_confirm"
+    # description_placeholders carries the discovered host so the UI
+    # can show "Discovered at <ip>".
+    assert result["description_placeholders"] == {"host": HOST}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_LOCAL_KEY: LOCAL_KEY}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HOST] == HOST
+    assert result["data"][CONF_DEVICE_ID] == DEVICE_ID
+    assert result["data"][CONF_LOCAL_KEY] == LOCAL_KEY
+    assert result["result"].unique_id == DEVICE_ID
+
+
+async def test_discovery_updates_host_on_existing_entry(
+    hass: HomeAssistant, mock_client_factory, config_entry: MockConfigEntry
+) -> None:
+    """If the device is already configured but appears at a NEW IP, the
+    discovery flow aborts as already_configured but rewrites
+    entry.data[CONF_HOST] in place — that's Gold `discovery-update-info`."""
+    from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
+
+    config_entry.add_to_hass(hass)
+    assert config_entry.data[CONF_HOST] == HOST
+
+    new_ip = "10.0.0.99"
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_INTEGRATION_DISCOVERY},
+        data={"device_id": DEVICE_ID, "ip": new_ip, "version": "3.3"},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert config_entry.data[CONF_HOST] == new_ip
+
+
+async def test_discovery_invalid_key_re_prompts(
+    hass: HomeAssistant, mock_client_factory
+) -> None:
+    """If the user enters a wrong local_key in the discovery confirm step,
+    the form is shown again with the invalid_auth error key, not aborted."""
+    from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_INTEGRATION_DISCOVERY},
+        data={"device_id": DEVICE_ID, "ip": HOST, "version": "3.3"},
+    )
+    mock_client_factory.get_status = AsyncMock(side_effect=InvalidAuth("nope"))
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_LOCAL_KEY: "wrong-key-123456"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "discovery_confirm"
+    assert result["errors"] == {"base": "invalid_auth"}

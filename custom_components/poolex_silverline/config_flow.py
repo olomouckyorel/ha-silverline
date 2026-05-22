@@ -28,6 +28,8 @@ _USER_SCHEMA = vol.Schema(
 
 _REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_LOCAL_KEY): cv.string})
 
+_DISCOVERY_CONFIRM_SCHEMA = vol.Schema({vol.Required(CONF_LOCAL_KEY): cv.string})
+
 
 async def _validate(data: Mapping[str, Any]) -> None:
     """Open a connection with the supplied credentials and pull status once.
@@ -49,10 +51,15 @@ async def _validate(data: Mapping[str, Any]) -> None:
 
 
 class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle the user, reauth, and reconfigure flows."""
+    """Handle the user, reauth, reconfigure, and discovery flows."""
 
     VERSION = 1
     MINOR_VERSION = 1
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._discovery_host: str | None = None
+        self._discovery_device_id: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -118,6 +125,60 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(_USER_SCHEMA, entry.data),
+            errors=errors,
+        )
+
+    async def async_step_integration_discovery(
+        self, discovery_info: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Triggered by the background UDP listener when a Tuya broadcast
+        names a device we haven't configured yet.
+
+        discovery_info carries ``device_id`` and ``ip`` straight from
+        the Tuya broadcast JSON. The local_key is the only thing the
+        device doesn't announce, so we ask the user for that and create
+        the entry.
+        """
+        device_id = discovery_info["device_id"]
+        host = discovery_info["ip"]
+        await self.async_set_unique_id(device_id)
+        # Satisfies Gold `discovery-update-info`: a device that's already
+        # configured but now appears at a new IP gets its host rewritten
+        # in place instead of needing a manual reconfigure.
+        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+        self._discovery_host = host
+        self._discovery_device_id = device_id
+        self.context["title_placeholders"] = {
+            "name": f"Pool Heatpump ({host})"
+        }
+        return await self.async_step_discovery_confirm()
+
+    async def async_step_discovery_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Second step of the discovery flow: ask for the local_key only,
+        validate, and create the entry."""
+        assert self._discovery_host is not None
+        assert self._discovery_device_id is not None
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            candidate = {
+                CONF_HOST: self._discovery_host,
+                CONF_PORT: DEFAULT_PORT,
+                CONF_DEVICE_ID: self._discovery_device_id,
+                CONF_LOCAL_KEY: user_input[CONF_LOCAL_KEY],
+            }
+            error = await self._try_validate(candidate)
+            if error is None:
+                return self.async_create_entry(
+                    title=f"Pool Heatpump ({self._discovery_host})",
+                    data=candidate,
+                )
+            errors["base"] = error
+        return self.async_show_form(
+            step_id="discovery_confirm",
+            data_schema=_DISCOVERY_CONFIRM_SCHEMA,
+            description_placeholders={"host": self._discovery_host},
             errors=errors,
         )
 
