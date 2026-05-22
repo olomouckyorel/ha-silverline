@@ -100,10 +100,6 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         # otherwise spend their whole lifetime `unavailable`.
         if not self.supported_dps:
             self.supported_dps = frozenset(state.raw.keys())
-        # Note: reconcile also runs via async_set_updated_data, but that's
-        # only invoked AFTER _async_update_data returns. Calling it here
-        # too so the first poll's state immediately reflects in issues.
-        self._reconcile_fault_issues(state)
         return state
 
     @callback
