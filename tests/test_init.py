@@ -80,6 +80,9 @@ async def test_firmware_capability_filter_skips_missing_dps(
         "select.pool_heatpump_operating_mode",
         "select.pool_heatpump_preset",
         "sensor.pool_heatpump_fault_code",
+        # Runtime accumulator: only needs DPs 1+4 (both present on the
+        # minimal firmware), so it registers even on PC-SLP090N.
+        "sensor.pool_heatpump_runtime_today",
         "sensor.pool_heatpump_temperature_delta",
         "switch.pool_heatpump_power",
     ]
@@ -89,20 +92,20 @@ async def test_full_firmware_registers_everything(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:
     """When the device exposes the full DP set (state_pool_running has
-    1-13 + 101-111), all 24 entities register. Guards against the
+    1-13 + 101-111), all 25 entities register. Guards against the
     capability filter accidentally dropping entities on full firmware.
 
-    The 24 count: 1 climate, 12 sensors (10 diagnostic + fault_code +
-    temperature_delta), 7 binary_sensors (water_pump + 5 fault bits +
-    compressor_running), 1 switch (power), 1 number (target_temperature),
-    2 selects (preset_mode + operating_mode)."""
+    The 25 count: 1 climate, 13 sensors (10 diagnostic + fault_code +
+    temperature_delta + runtime_today), 7 binary_sensors (water_pump +
+    5 fault bits + compressor_running), 1 switch (power), 1 number
+    (target_temperature), 2 selects (preset_mode + operating_mode)."""
     registry = er.async_get(hass)
     entity_ids = sorted(
         e.entity_id
         for e in registry.entities.values()
         if e.config_entry_id == init_integration.entry_id
     )
-    assert len(entity_ids) == 24
+    assert len(entity_ids) == 25
 
 
 async def test_async_setup_starts_discovery_task(

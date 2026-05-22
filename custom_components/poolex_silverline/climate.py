@@ -165,7 +165,8 @@ class SilverlineClimate(SilverlineEntity, ClimateEntity, RestoreEntity):
         Without this, HA can't distinguish "in heat mode and actively
         heating" from "in heat mode but target reached, idle now" — both
         render the same. The computation lives in `util.compute_hvac_action`
-        so the binary_sensor.compressor_running entity can reuse it.
+        so binary_sensor.compressor_running and sensor.runtime_today can
+        reuse the same decision tree.
         """
         state = self.coordinator.data
         if state is None:

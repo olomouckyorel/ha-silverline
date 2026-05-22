@@ -14,7 +14,7 @@ from .const import COOL_PREFIX_TO_PRESET, HEAT_PREFIX_TO_PRESET
 
 
 def compute_hvac_action(
-    state: DeviceState, last_direction: HVACMode | None
+    state: DeviceState, last_direction: HVACMode | None = None
 ) -> HVACAction | None:
     """Derive HVACAction from a DeviceState snapshot.
 

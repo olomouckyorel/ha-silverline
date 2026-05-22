@@ -110,7 +110,8 @@
           "P7": "P7 — Verdampfer-Sensor",
           "unknown": "Unbekannter Fehler"
         }
-      }
+      },
+      "runtime_today": { "name": "Laufzeit heute" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Kompressor" },

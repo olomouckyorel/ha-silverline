@@ -110,7 +110,8 @@
           "P7": "P7 — Coil sensor",
           "unknown": "Unknown fault"
         }
-      }
+      },
+      "runtime_today": { "name": "Runtime today" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Compressor" },

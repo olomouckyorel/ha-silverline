@@ -23,7 +23,8 @@
       "actual_frequency": { "default": "mdi:sine-wave" },
       "eev_steps": { "default": "mdi:valve" },
       "fan_speed": { "default": "mdi:fan" },
-      "fault_code": { "default": "mdi:alert-circle-outline" }
+      "fault_code": { "default": "mdi:alert-circle-outline" },
+      "runtime_today": { "default": "mdi:timer-outline" }
     },
     "binary_sensor": {
       "compressor_running": {
@@ -40,7 +41,6 @@
       "fault_low_pressure": { "default": "mdi:gauge-low" },
       "fault_communication": { "default": "mdi:lan-disconnect" }
     },
-<<<<<<< HEAD
     "switch": {
       "power": {
         "default": "mdi:power",
@@ -51,11 +51,10 @@
     },
     "number": {
       "target_temperature": { "default": "mdi:thermometer" }
-=======
+    },
     "select": {
       "preset_mode": { "default": "mdi:tune" },
       "operating_mode": { "default": "mdi:home-thermometer" }
->>>>>>> worker-12
     }
   }
 }

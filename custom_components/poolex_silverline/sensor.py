@@ -16,6 +16,7 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfFrequency,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -50,6 +51,12 @@ class SilverlineSensorDescription(SensorEntityDescription):
     # DP_QUERY response, so firmware variants that don't expose a DP
     # never leak `unavailable` entities into the registry.
     dp_keys: tuple[str, ...]
+    # Optional alternative source: sensors whose value lives on the
+    # coordinator itself (accumulators, derived counters) set this and
+    # SilverlineSensor.native_value will read from here in preference
+    # to value_fn. value_fn must still be supplied for the dataclass
+    # contract but is ignored when coord_fn is set.
+    coord_fn: Callable[[SilverlineCoordinator], float | int | str | None] | None = None
 
 
 SENSORS: tuple[SilverlineSensorDescription, ...] = (
@@ -176,6 +183,22 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         value_fn=lambda d: _decode_fault(d.fault),
         dp_keys=("13",),
     ),
+    SilverlineSensorDescription(
+        key="runtime_today",
+        translation_key="runtime_today",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # value_fn is unused — coord_fn takes precedence — but the
+        # dataclass requires it, so provide a None-returning stub.
+        value_fn=lambda d: None,
+        coord_fn=lambda c: c._runtime_today_seconds,
+        # DPs 1 + 4 are what compute_hvac_action depends on to decide
+        # HEATING/COOLING vs IDLE/OFF. Gating on these matches the
+        # climate entity's minimum-firmware contract.
+        dp_keys=("1", "4"),
+    ),
 )
 
 
@@ -209,6 +232,8 @@ class SilverlineSensor(SilverlineEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | int | str | None:
+        if self.entity_description.coord_fn is not None:
+            return self.entity_description.coord_fn(self.coordinator)
         if self.coordinator.data is None:
             return None
         return self.entity_description.value_fn(self.coordinator.data)
@@ -217,4 +242,9 @@ class SilverlineSensor(SilverlineEntity, SensorEntity):
     def available(self) -> bool:
         if not super().available or self.coordinator.data is None:
             return False
+        # Coordinator-sourced sensors track an accumulator that is always
+        # well-defined (starts at 0) — they're available whenever the
+        # coordinator itself is healthy.
+        if self.entity_description.coord_fn is not None:
+            return True
         return self.entity_description.value_fn(self.coordinator.data) is not None

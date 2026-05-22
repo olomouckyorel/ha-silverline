@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Final
 
+from homeassistant.components.climate.const import HVACAction
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 from pysilverline import (
     CannotConnect,
     DeviceInfo,
@@ -76,6 +78,12 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         # Tracks which fault codes currently have an open Repair issue so
         # we only fire create/delete when the bit actually flips.
         self._active_fault_issues: set[str] = set()
+        # Runtime-today accumulator state — see _tick_runtime. Stored on
+        # the coordinator (not the sensor) so it survives entity reloads
+        # and is reachable from diagnostics without entity lookups.
+        self._runtime_today_seconds: float = 0.0
+        self._runtime_last_tick: datetime | None = None
+        self._runtime_local_date: date | None = None
 
     async def _async_setup(self) -> None:
         try:
@@ -111,7 +119,52 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         # Reconcile Repair issues before notifying entity listeners so the
         # issue registry is consistent with what entities are about to render.
         self._reconcile_fault_issues(data)
+        self._tick_runtime(data)
         super().async_set_updated_data(data)
+
+    @callback
+    def _tick_runtime(self, state: DeviceState) -> None:
+        """Accumulate seconds while hvac_action is HEATING or COOLING.
+
+        The accumulator resets to 0 at local midnight (so today's value
+        reflects exactly today, not a rolling 24h). Each tick measures
+        the gap since the previous tick — push-driven, so the granularity
+        is the device push rate. A polite under-count is preferred over
+        the alternative (sampling at midnight crossing and double-billing
+        across the boundary), so the first tick after a midnight reset
+        only starts the new day's clock.
+        """
+        # Imported lazily to avoid a circular-import path
+        # (coordinator → util → climate.const is fine; this just keeps
+        # the runtime accumulator self-contained).
+        from .util import compute_hvac_action
+
+        now = dt_util.utcnow()
+        local_today = dt_util.as_local(now).date()
+
+        if self._runtime_last_tick is None:
+            # First observation: just anchor the clock; can't accumulate
+            # an interval without a prior timestamp.
+            self._runtime_last_tick = now
+            self._runtime_local_date = local_today
+            return
+
+        if self._runtime_local_date != local_today:
+            # Day boundary crossed since the last tick. Zero the counter
+            # and re-anchor — under-counts the few seconds between the
+            # last pre-midnight tick and the actual midnight instant, but
+            # avoids attributing any of that time to "today".
+            self._runtime_today_seconds = 0.0
+            self._runtime_local_date = local_today
+            self._runtime_last_tick = now
+            return
+
+        action = compute_hvac_action(state)
+        if action in (HVACAction.HEATING, HVACAction.COOLING):
+            delta = (now - self._runtime_last_tick).total_seconds()
+            if delta > 0:
+                self._runtime_today_seconds += delta
+        self._runtime_last_tick = now
 
     @callback
     def _reconcile_fault_issues(self, state: DeviceState) -> None:

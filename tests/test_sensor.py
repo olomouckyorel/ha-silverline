@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -126,6 +129,140 @@ async def test_temperature_delta_unavailable_when_dp_missing(
     state = hass.states.get("sensor.pool_heatpump_temperature_delta")
     assert state is not None
     assert state.state == STATE_UNAVAILABLE
+def _heating_state(target: int = 28, current: int = 26) -> DeviceState:
+    """Build a DeviceState that compute_hvac_action resolves to HEATING:
+    power on, Heat mode, current<target, no DP 108 (so the temp-delta
+    fallback path decides — keeps this test independent of frequency)."""
+    return DeviceState.from_dps(
+        {"1": True, "2": target, "3": current, "4": "Heat", "13": 0}
+    )
+
+
+def _idle_state() -> DeviceState:
+    """Same Heat mode but current>=target -> compute_hvac_action == IDLE."""
+    return DeviceState.from_dps(
+        {"1": True, "2": 26, "3": 28, "4": "Heat", "13": 0}
+    )
+
+
+def _off_state() -> DeviceState:
+    return DeviceState.from_dps({"1": False, "4": "Heat", "13": 0})
+
+
+async def test_runtime_today_accumulates_while_heating(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """Two ticks 60s apart with hvac_action=HEATING should add ~60s to
+    the accumulator. The first tick only anchors the clock (can't measure
+    an interval from a single point), so the increment shows up after
+    the second push."""
+    coordinator = init_integration.runtime_data
+    # Local-midnight-safe baseline: pick a time well away from a day
+    # boundary so the reset-on-midnight branch doesn't fire here.
+    t0 = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t0,
+    ):
+        coordinator.async_set_updated_data(_heating_state())
+    await hass.async_block_till_done()
+    # First tick: clock anchored, nothing accumulated yet.
+    assert coordinator._runtime_today_seconds == 0.0
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t0 + timedelta(seconds=60),
+    ):
+        coordinator.async_set_updated_data(_heating_state())
+    await hass.async_block_till_done()
+    assert coordinator._runtime_today_seconds == 60.0
+
+    # Verify the sensor surface picks up the accumulated value.
+    state = hass.states.get("sensor.pool_heatpump_runtime_today")
+    assert state is not None
+    assert float(state.state) == 60.0
+
+
+async def test_runtime_today_does_not_grow_when_idle(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """IDLE and OFF must not contribute to the accumulator regardless
+    of how much wall time passes between ticks."""
+    coordinator = init_integration.runtime_data
+    t0 = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t0,
+    ):
+        coordinator.async_set_updated_data(_idle_state())
+    await hass.async_block_till_done()
+    assert coordinator._runtime_today_seconds == 0.0
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t0 + timedelta(seconds=120),
+    ):
+        coordinator.async_set_updated_data(_idle_state())
+    await hass.async_block_till_done()
+    assert coordinator._runtime_today_seconds == 0.0
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t0 + timedelta(seconds=300),
+    ):
+        coordinator.async_set_updated_data(_off_state())
+    await hass.async_block_till_done()
+    assert coordinator._runtime_today_seconds == 0.0
+
+
+async def test_runtime_today_resets_at_local_midnight(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """When a tick lands on a calendar day different from the previous
+    tick's local date, the accumulator resets to 0 — owners want today's
+    runtime to mean exactly today, not a 24h rolling window."""
+    coordinator = init_integration.runtime_data
+    # HA's test config uses US/Pacific (UTC-7 in May), so the local
+    # midnight rolling May 22 -> May 23 happens at 07:00 UTC on May 23.
+    # 06:00 UTC May 23 and 08:00 UTC May 23 straddle that boundary.
+    t_late = datetime(2026, 5, 23, 6, 0, 0, tzinfo=timezone.utc)
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t_late,
+    ):
+        coordinator.async_set_updated_data(_heating_state())
+    await hass.async_block_till_done()
+
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t_late + timedelta(seconds=60),
+    ):
+        coordinator.async_set_updated_data(_heating_state())
+    await hass.async_block_till_done()
+    assert coordinator._runtime_today_seconds == 60.0
+
+    # Now cross local midnight by jumping past 07:00 UTC.
+    t_next = datetime(2026, 5, 23, 8, 0, 0, tzinfo=timezone.utc)
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t_next,
+    ):
+        coordinator.async_set_updated_data(_heating_state())
+    await hass.async_block_till_done()
+    # Reset branch: counter zeroed, clock re-anchored on the new day.
+    assert coordinator._runtime_today_seconds == 0.0
+
+    # And the new day starts accumulating fresh from the re-anchor.
+    with patch(
+        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
+        return_value=t_next + timedelta(seconds=45),
+    ):
+        coordinator.async_set_updated_data(_heating_state())
+    await hass.async_block_till_done()
+    assert coordinator._runtime_today_seconds == 45.0
 
 
 async def test_entity_inventory_snapshot(
