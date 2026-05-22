@@ -62,6 +62,72 @@ async def test_sensor_unavailable_when_dp_missing(
     assert state.state == STATE_UNAVAILABLE
 
 
+async def test_temperature_delta_positive(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """target > current → positive delta."""
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "2": 30, "3": 28, "4": "Heat", "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.pool_heatpump_temperature_delta")
+    assert state is not None
+    assert state.state == "2"
+
+
+async def test_temperature_delta_negative(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """target < current → negative delta."""
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "2": 24, "3": 28, "4": "Heat", "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.pool_heatpump_temperature_delta")
+    assert state is not None
+    assert state.state == "-4"
+
+
+async def test_temperature_delta_zero(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """target == current → 0 delta."""
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "2": 27, "3": 27, "4": "Heat", "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.pool_heatpump_temperature_delta")
+    assert state is not None
+    assert state.state == "0"
+
+
+async def test_temperature_delta_unavailable_when_dp_missing(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """If DP 2 or DP 3 is missing, the delta sensor reports unavailable."""
+    coordinator = init_integration.runtime_data
+    # Missing DP 2 (target).
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "3": 28, "4": "Heat", "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.pool_heatpump_temperature_delta")
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+    # Missing DP 3 (current).
+    coordinator.async_set_updated_data(
+        DeviceState.from_dps({"1": True, "2": 28, "4": "Heat", "13": 0})
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.pool_heatpump_temperature_delta")
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+
 async def test_entity_inventory_snapshot(
     hass: HomeAssistant,
     init_integration,

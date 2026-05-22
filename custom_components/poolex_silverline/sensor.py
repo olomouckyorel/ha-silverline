@@ -54,6 +54,19 @@ class SilverlineSensorDescription(SensorEntityDescription):
 
 SENSORS: tuple[SilverlineSensorDescription, ...] = (
     SilverlineSensorDescription(
+        key="temperature_delta",
+        translation_key="temperature_delta",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda d: (
+            (d.temp_set - d.temp_current)
+            if (d.temp_set is not None and d.temp_current is not None)
+            else None
+        ),
+        dp_keys=("2", "3"),
+    ),
+    SilverlineSensorDescription(
         key="exhaust_temperature",
         translation_key="exhaust_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,

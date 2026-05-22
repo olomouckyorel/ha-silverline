@@ -49,8 +49,9 @@ async def test_firmware_capability_filter_skips_missing_dps(
     state_minimal_firmware: DeviceState,
 ) -> None:
     """A firmware that only emits DPs 1,2,3,4,13 (verified live on
-    PC-SLP090N) should produce: 1 climate, 1 fault-code sensor, and
-    5 fault binary sensors — and nothing else. The 10 diagnostic
+    PC-SLP090N) should produce: 1 climate, 1 fault-code sensor, the
+    temperature-delta sensor (depends only on DPs 2+3), and 5 fault
+    binary sensors — and nothing else. The 10 diagnostic
     temperature/frequency/eev/fan sensors and the water-pump binary
     sensor (DPs 101-111) must NOT register."""
     mock_client_factory.get_status = AsyncMock(return_value=state_minimal_firmware)
@@ -73,6 +74,7 @@ async def test_firmware_capability_filter_skips_missing_dps(
         "binary_sensor.pool_heatpump_water_flow_fault",
         "climate.pool_heatpump",
         "sensor.pool_heatpump_fault_code",
+        "sensor.pool_heatpump_temperature_delta",
     ]
 
 
@@ -88,7 +90,7 @@ async def test_full_firmware_registers_everything(
         for e in registry.entities.values()
         if e.config_entry_id == init_integration.entry_id
     )
-    assert len(entity_ids) == 18
+    assert len(entity_ids) == 19
 
 
 async def test_async_setup_starts_discovery_task(

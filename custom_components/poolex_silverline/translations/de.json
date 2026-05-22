@@ -82,6 +82,7 @@
       }
     },
     "sensor": {
+      "temperature_delta": { "name": "Temperaturdifferenz" },
       "exhaust_temperature": { "name": "Verdichter-Heißgastemperatur" },
       "return_temperature": { "name": "Verdichter-Sauggastemperatur" },
       "coil_temperature": { "name": "Verdampfertemperatur" },

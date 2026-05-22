@@ -12,6 +12,7 @@
       }
     },
     "sensor": {
+      "temperature_delta": { "default": "mdi:thermometer-chevron-up" },
       "exhaust_temperature": { "default": "mdi:thermometer-high" },
       "return_temperature": { "default": "mdi:thermometer" },
       "coil_temperature": { "default": "mdi:radiator" },
