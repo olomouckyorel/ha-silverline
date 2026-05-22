@@ -8,7 +8,9 @@ from unittest.mock import patch
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 from pysilverline import DeviceState
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from syrupy.assertion import SnapshotAssertion
 
 
@@ -149,26 +151,28 @@ def _off_state() -> DeviceState:
     return DeviceState.from_dps({"1": False, "4": "Heat", "13": 0})
 
 
+def _reset_runtime(coordinator, anchor: datetime) -> None:
+    """Re-anchor the runtime accumulator to a known instant.
+
+    The init_integration fixture runs a real first refresh which already
+    sets _runtime_last_tick to wall-clock now; each runtime test needs
+    a hermetic starting point uncoupled from real time.
+    """
+    coordinator._runtime_today_seconds = 0.0
+    coordinator._runtime_last_tick = anchor
+    coordinator._runtime_local_date = dt_util.as_local(anchor).date()
+
+
 async def test_runtime_today_accumulates_while_heating(
     hass: HomeAssistant, init_integration
 ) -> None:
-    """Two ticks 60s apart with hvac_action=HEATING should add ~60s to
-    the accumulator. The first tick only anchors the clock (can't measure
-    an interval from a single point), so the increment shows up after
-    the second push."""
+    """Two ticks 60s apart with hvac_action=HEATING add ~60s to the
+    accumulator."""
     coordinator = init_integration.runtime_data
     # Local-midnight-safe baseline: pick a time well away from a day
     # boundary so the reset-on-midnight branch doesn't fire here.
     t0 = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
-
-    with patch(
-        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
-        return_value=t0,
-    ):
-        coordinator.async_set_updated_data(_heating_state())
-    await hass.async_block_till_done()
-    # First tick: clock anchored, nothing accumulated yet.
-    assert coordinator._runtime_today_seconds == 0.0
+    _reset_runtime(coordinator, t0)
 
     with patch(
         "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
@@ -191,14 +195,7 @@ async def test_runtime_today_does_not_grow_when_idle(
     of how much wall time passes between ticks."""
     coordinator = init_integration.runtime_data
     t0 = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
-
-    with patch(
-        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
-        return_value=t0,
-    ):
-        coordinator.async_set_updated_data(_idle_state())
-    await hass.async_block_till_done()
-    assert coordinator._runtime_today_seconds == 0.0
+    _reset_runtime(coordinator, t0)
 
     with patch(
         "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
@@ -228,13 +225,7 @@ async def test_runtime_today_resets_at_local_midnight(
     # midnight rolling May 22 -> May 23 happens at 07:00 UTC on May 23.
     # 06:00 UTC May 23 and 08:00 UTC May 23 straddle that boundary.
     t_late = datetime(2026, 5, 23, 6, 0, 0, tzinfo=timezone.utc)
-
-    with patch(
-        "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
-        return_value=t_late,
-    ):
-        coordinator.async_set_updated_data(_heating_state())
-    await hass.async_block_till_done()
+    _reset_runtime(coordinator, t_late)
 
     with patch(
         "custom_components.poolex_silverline.coordinator.dt_util.utcnow",
@@ -263,6 +254,46 @@ async def test_runtime_today_resets_at_local_midnight(
         coordinator.async_set_updated_data(_heating_state())
     await hass.async_block_till_done()
     assert coordinator._runtime_today_seconds == 45.0
+
+
+async def test_runtime_today_accumulates_on_poll(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Runtime tick must also fire on the periodic poll path.
+
+    The DataUpdateCoordinator base assigns _async_update_data's return
+    to self.data directly — it never routes the poll result through
+    async_set_updated_data. If the tick ran *only* in that override,
+    a device whose firmware emits no spontaneous DP pushes (or whose
+    pushes were silently being dropped) would have runtime_today
+    pinned at zero forever.
+    """
+    coordinator = init_integration.runtime_data
+    # init_integration's first refresh already anchored _runtime_last_tick;
+    # capture that so we can verify the next poll re-anchored it. Can't
+    # patch dt_util.utcnow inside the tick logic here — HA's scheduler
+    # uses the same symbol for fire-time accounting and the patch would
+    # stop async_fire_time_changed from running the next poll at all.
+    anchor = coordinator._runtime_last_tick
+    assert anchor is not None
+    before_polls = mock_client_factory.get_status.await_count
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=60))
+    await hass.async_block_till_done()
+
+    # Sanity: a poll actually ran (otherwise we'd be testing nothing).
+    assert mock_client_factory.get_status.await_count > before_polls
+    # The side effect we care about: _tick_runtime fired on the poll
+    # path and re-anchored the clock. Without Bug 1's fix, the anchor
+    # would be unchanged and runtime_today would never accumulate on
+    # devices that only respond to polls.
+    assert coordinator._runtime_last_tick is not None
+    assert coordinator._runtime_last_tick > anchor
+    # And because state_pool_running resolves to HEATING, any positive
+    # delta between the two ticks must accumulate. The exact number
+    # depends on wall-clock timing in the test environment, but it
+    # must be non-zero.
+    assert coordinator._runtime_today_seconds > 0.0
 
 
 async def test_entity_inventory_snapshot(

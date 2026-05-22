@@ -108,6 +108,10 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         # otherwise spend their whole lifetime `unavailable`.
         if not self.supported_dps:
             self.supported_dps = frozenset(state.raw.keys())
+        # The DataUpdateCoordinator base assigns the return value to
+        # self.data directly without going through async_set_updated_data,
+        # so the poll path needs to invoke the side effects itself.
+        self._process_state(state)
         return state
 
     @callback
@@ -116,11 +120,16 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
 
     @callback
     def async_set_updated_data(self, data: DeviceState) -> None:
-        # Reconcile Repair issues before notifying entity listeners so the
-        # issue registry is consistent with what entities are about to render.
-        self._reconcile_fault_issues(data)
-        self._tick_runtime(data)
+        self._process_state(data)
         super().async_set_updated_data(data)
+
+    @callback
+    def _process_state(self, state: DeviceState) -> None:
+        # Single chokepoint for every fresh state, push or poll. Keeps the
+        # issue registry and runtime accumulator consistent regardless of
+        # which path delivered the state.
+        self._reconcile_fault_issues(state)
+        self._tick_runtime(state)
 
     @callback
     def _tick_runtime(self, state: DeviceState) -> None:

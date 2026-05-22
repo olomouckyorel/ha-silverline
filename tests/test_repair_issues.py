@@ -3,9 +3,14 @@ Repair issues. Covers the Gold rule `repair-issues`."""
 
 from __future__ import annotations
 
+from datetime import timedelta
+from unittest.mock import AsyncMock
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import dt as dt_util
 from pysilverline import DeviceState
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.poolex_silverline.const import DOMAIN
 
@@ -119,3 +124,52 @@ async def test_repair_issue_fires_on_push(
     )
     await hass.async_block_till_done()
     assert _issue(hass, "fault_E03") is not None
+
+
+async def test_repair_issue_fires_on_poll(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Fault reconcile must also run on the periodic poll path.
+
+    The DataUpdateCoordinator base class assigns _async_update_data's
+    return value to self.data directly — it never routes the poll
+    result through async_set_updated_data. If reconcile lived only in
+    that override, a device that boots with a fault bit set would
+    surface no Repair issue until the first push frame arrived.
+    """
+    mock_client_factory.get_status = AsyncMock(
+        return_value=DeviceState.from_dps(
+            {"1": True, "4": "Heat", "3": 26, "13": 1}
+        )
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=60))
+    await hass.async_block_till_done()
+    assert _issue(hass, "fault_E03") is not None
+
+
+async def test_repair_issue_clears_on_poll(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """The mirror case: a fault that clears while we're only polling
+    (no pushes arriving) must drop the open Repair issue, not leave it
+    stranded until the next push."""
+    coordinator = init_integration.runtime_data
+    # Seed an active issue via the push path (mirrors a real boot with
+    # a fault bit set).
+    push_listener = mock_client_factory.listeners[0]
+    push_listener(
+        DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 1})
+    )
+    await hass.async_block_till_done()
+    assert _issue(hass, "fault_E03") is not None
+
+    # Now switch the poll path to return a clean state and tick the
+    # scheduler. The override path is not exercised — only the poll path.
+    mock_client_factory.get_status = AsyncMock(
+        return_value=DeviceState.from_dps(
+            {"1": True, "4": "Heat", "3": 26, "13": 0}
+        )
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=60))
+    await hass.async_block_till_done()
+    assert _issue(hass, "fault_E03") is None
