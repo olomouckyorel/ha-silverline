@@ -14,7 +14,16 @@ rules:
   common-modules: done
   config-flow: done
   config-flow-test-coverage: done
-  dependency-transparency: done
+  dependency-transparency:
+    status: done
+    comment: |
+      The only runtime dependency is pysilverline, declared explicitly in
+      manifest.json:requirements. Release blocker tracked separately: the
+      pinned version must be published to PyPI before a Platinum release
+      goes out, otherwise HA's startup-time `pip install` of the
+      manifest requirements will fail for HACS users. The package source
+      lives in ./pysilverline and is wheel-buildable; publishing it is
+      a CI/release-workflow task rather than a code change.
   docs-actions:
     status: exempt
     comment: Integration registers no custom service actions in v0.1.
