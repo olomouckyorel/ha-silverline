@@ -45,12 +45,19 @@ Invalid integrations: 0
 Notably the `quality_scale` validator (the same one Core uses) passed against
 `custom_components/poolex_silverline/quality_scale.yaml`.
 
-### HACS — pending CI confirmation
+### HACS + Tests — confirmed GREEN in CI
 
-The local `ghcr.io/hacs/action:main` container requires a `GITHUB_TOKEN` for
-GitHub API metadata. Per orchestrator decision the bundled refactor is being
-pushed to `github/main` so the existing `.github/workflows/hacs.yaml` job
-runs in CI. **DONE is not declared until that job reports green.**
+After commit `4acdd9a` was pushed to `github/main`, all three CI workflows
+ran and reported `success` against that head SHA:
+
+```
+hassfest         conclusion=success   head=4acdd9a   2026-05-25T11:01:46Z
+HACS validation  conclusion=success   head=4acdd9a   2026-05-25T11:01:46Z
+Tests            conclusion=success   head=4acdd9a   2026-05-25T11:01:46Z
+```
+
+The local hassfest run (above) and the CI hassfest run agree. Together
+these close the last SKIPPED gate check — **DONE is now unconditional.**
 
 ---
 
@@ -221,11 +228,10 @@ Guard-file diff across all rounds = **0 lines**.
 
 ## 6. Honesty section — uncertain / pending
 
-- **HACS validator**: pending the GitHub Actions `hacs.yaml` run on the
-  next push to `main`. Local container needs a `GITHUB_TOKEN` to reach the
-  GitHub API; per orchestrator decision the bundled refactor is being
-  pushed to main so CI authoritative validation runs. **DONE conditional
-  on that CI being green.**
+- **CI status**: all three workflows (`hassfest`, `HACS validation`,
+  `Tests`) returned `success` on commit `4acdd9a` (push to
+  github/main). The SKIPPED gate check is closed; there is no remaining
+  CI-pending item.
 - **Polish items**: each reviewer carried polish lists (cosmetic/typing
   width / test-strengthening / one diagnostics ergonomics nit). None are
   required by the Platinum bar; all are listed in §4 for future cleanup.
@@ -244,11 +250,12 @@ Guard-file diff across all rounds = **0 lines**.
 ## 7. Definition-of-Done checklist
 
 - [x] **A. Gate is GREEN** (`bash scripts/platinum-gate.sh` → 15/0/1; the
-      one SKIPPED check is the local hassfest+HACS runner, NOT a hard check).
-- [x] **B (partial). hassfest GREEN** — confirmed by running
-      `ghcr.io/home-assistant/hassfest` directly. **HACS pending CI**.
+      one SKIPPED check is the local hassfest+HACS runner, NOT a hard
+      check — confirmed green via CI below).
+- [x] **B. CI hassfest + HACS GREEN** — commit `4acdd9a` on `main`:
+      `hassfest`, `HACS validation`, `Tests` all `conclusion=success`.
 - [x] **C. Panel verdict PASS** — 5/5 reviewers PASS in round 3.
 - [x] **D. review-auditor PASS** — earned, not rubber-stamped.
 - [x] **E. PLATINUM_REPORT.md exists with per-rule evidence**.
 
-**Status: Platinum-eligible. Final DONE conditional on CI HACS green.**
+**Status: DONE. Quality-Scale Platinum proved.**
