@@ -199,10 +199,7 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
         # check when productKey is missing entirely — older firmware may
         # not broadcast the field, and the bulb/plug flood always carries
         # one in practice.
-        if (
-            product_key is not None
-            and product_key not in _KNOWN_POOLEX_PRODUCT_KEYS
-        ):
+        if product_key is not None and product_key not in _KNOWN_POOLEX_PRODUCT_KEYS:
             _LOGGER.info(
                 "Silverline discovery: ignoring non-Poolex Tuya device"
                 " device=%s host=%s productKey=%s",
@@ -250,9 +247,7 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
 
         self._discovery_host = host
         self._discovery_device_id = device_id
-        self.context["title_placeholders"] = {
-            "name": f"Pool Heatpump ({host})"
-        }
+        self.context["title_placeholders"] = {"name": f"Pool Heatpump ({host})"}
         return await self.async_step_discovery_confirm()
 
     @staticmethod

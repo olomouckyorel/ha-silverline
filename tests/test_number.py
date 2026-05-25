@@ -40,9 +40,7 @@ async def test_entity_skipped_when_dp2_absent(
     number entity at all (rather than landing it as a permanent
     `unavailable` ghost in the registry)."""
     mock_client_factory.get_status = AsyncMock(
-        return_value=DeviceState.from_dps(
-            {"1": True, "3": 25, "4": "Heat", "13": 0}
-        )
+        return_value=DeviceState.from_dps({"1": True, "3": 25, "4": "Heat", "13": 0})
     )
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -209,9 +207,7 @@ async def test_native_value_returns_none_when_coordinator_data_none(
     coordinator = init_integration.runtime_data
     coordinator.data = None
     component: EntityComponent = hass.data["number"]
-    entity = next(
-        e for e in component.entities if e.entity_id == ENTITY_ID
-    )
+    entity = next(e for e in component.entities if e.entity_id == ENTITY_ID)
     assert entity.native_value is None
 
 

@@ -125,6 +125,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: SilverlineConfigEntry) 
     return unload_ok
 
 
-async def _async_reload_entry(hass: HomeAssistant, entry: SilverlineConfigEntry) -> None:
+async def _async_reload_entry(
+    hass: HomeAssistant, entry: SilverlineConfigEntry
+) -> None:
     """Reload on options or data changes."""
     await hass.config_entries.async_reload(entry.entry_id)

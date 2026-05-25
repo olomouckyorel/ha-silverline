@@ -11,15 +11,12 @@ rules:
       async_set_updated_data. The 30 s DataUpdateCoordinator poll is a
       heartbeat/fallback rather than the primary state path.
   brands:
-    status: todo
+    status: done
     comment: |
-      Brand assets (icon.png, icon@2x.png, logo.png, logo@2x.png) are
-      prepared locally in custom_components/poolex_silverline/brand/ at
-      the required 256x256 / 512x512 / 512x256 / 1024x512 resolutions,
-      but a PR to home-assistant/brands/custom_integrations/poolex_silverline/
-      has not yet been submitted. Until that PR lands the integration's
-      icon/logo will not display in the HA UI for users on stable HA
-      releases.
+      Brand assets ship locally under custom_components/poolex_silverline/brand/
+      (icon.png 256x256, icon@2x.png 512x512, logo.png 512x256, logo@2x.png
+      1024x512). HA >= 2026.3 serves these via the brands proxy without a PR
+      to home-assistant/brands.
   common-modules: done
   config-flow: done
   config-flow-test-coverage: done

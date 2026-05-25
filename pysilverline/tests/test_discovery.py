@@ -125,6 +125,7 @@ def test_decode_rejects_missing_required_fields() -> None:
 def test_decode_rejects_garbage_random_bytes() -> None:
     """Random 200-byte buffer shouldn't crash the decoder."""
     import os
+
     for _ in range(20):
         assert _decode_broadcast(os.urandom(200), encrypted=True) is None
 
@@ -160,9 +161,7 @@ async def test_discover_once_returns_unique_devices() -> None:
 
         return _Stub(), _Stub()
 
-    with patch(
-        "pysilverline.discovery._bind_listeners", side_effect=fake_bind
-    ):
+    with patch("pysilverline.discovery._bind_listeners", side_effect=fake_bind):
         result = await discover_once(timeout=0.1)
     assert {d.device_id for d in result} == {"bf_aaa", "bf_bbb"}
 
@@ -177,8 +176,6 @@ async def test_discover_once_returns_empty_on_silent_lan() -> None:
 
         return _Stub(), _Stub()
 
-    with patch(
-        "pysilverline.discovery._bind_listeners", side_effect=fake_bind
-    ):
+    with patch("pysilverline.discovery._bind_listeners", side_effect=fake_bind):
         result = await discover_once(timeout=0.05)
     assert result == []

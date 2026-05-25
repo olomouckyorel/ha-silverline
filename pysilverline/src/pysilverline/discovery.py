@@ -114,7 +114,9 @@ def _decode_broadcast(data: bytes, *, encrypted: bool) -> DiscoveryInfo | None:
         device_id=gw_id,
         ip=ip,
         version=str(parsed.get("version", "3.3")),
-        product_key=parsed.get("productKey") if isinstance(parsed.get("productKey"), str) else None,
+        product_key=parsed.get("productKey")
+        if isinstance(parsed.get("productKey"), str)
+        else None,
         encrypt=bool(parsed.get("encrypt", encrypted)),
     )
 
@@ -122,9 +124,7 @@ def _decode_broadcast(data: bytes, *, encrypted: bool) -> DiscoveryInfo | None:
 class _DiscoveryProtocol(asyncio.DatagramProtocol):
     """Pushes parsed DiscoveryInfo events onto an asyncio.Queue."""
 
-    def __init__(
-        self, queue: asyncio.Queue[DiscoveryInfo], *, encrypted: bool
-    ) -> None:
+    def __init__(self, queue: asyncio.Queue[DiscoveryInfo], *, encrypted: bool) -> None:
         self._queue = queue
         self._encrypted = encrypted
 

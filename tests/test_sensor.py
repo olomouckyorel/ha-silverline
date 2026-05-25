@@ -145,6 +145,8 @@ async def test_temperature_delta_unavailable_when_dp_missing(
     state = hass.states.get("sensor.pool_heatpump_temperature_delta")
     assert state is not None
     assert state.state == STATE_UNAVAILABLE
+
+
 def _heating_state(target: int = 28, current: int = 26) -> DeviceState:
     """Build a DeviceState that compute_hvac_action resolves to HEATING:
     power on, Heat mode, current<target, no DP 108 (so the temp-delta
@@ -156,9 +158,7 @@ def _heating_state(target: int = 28, current: int = 26) -> DeviceState:
 
 def _idle_state() -> DeviceState:
     """Same Heat mode but current>=target -> compute_hvac_action == IDLE."""
-    return DeviceState.from_dps(
-        {"1": True, "2": 26, "3": 28, "4": "Heat", "13": 0}
-    )
+    return DeviceState.from_dps({"1": True, "2": 26, "3": 28, "4": "Heat", "13": 0})
 
 
 def _off_state() -> DeviceState:
@@ -323,7 +323,11 @@ async def test_entity_inventory_snapshot(
     change is intentional."""
     registry = er.async_get(hass)
     entries = sorted(
-        (e for e in registry.entities.values() if e.config_entry_id == init_integration.entry_id),
+        (
+            e
+            for e in registry.entities.values()
+            if e.config_entry_id == init_integration.entry_id
+        ),
         key=lambda e: e.entity_id,
     )
     assert {e.entity_id: registry.async_get(e.entity_id) for e in entries} == snapshot(
@@ -332,11 +336,7 @@ async def test_entity_inventory_snapshot(
     # Only entities that are actually enabled produce a state; some
     # diagnostic DPs are disabled-by-default.
     states = sorted(
-        (
-            s
-            for e in entries
-            if (s := hass.states.get(e.entity_id)) is not None
-        ),
+        (s for e in entries if (s := hass.states.get(e.entity_id)) is not None),
         key=lambda s: s.entity_id,
     )
     assert states == snapshot(name="entity_states")

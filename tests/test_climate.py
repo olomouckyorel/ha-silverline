@@ -349,6 +349,7 @@ async def test_hvac_action_off_when_power_off(
     hass: HomeAssistant, mock_client_factory, init_integration
 ) -> None:
     from homeassistant.components.climate import HVACAction
+
     coordinator = init_integration.runtime_data
     coordinator.async_set_updated_data(
         DeviceState.from_dps({"1": False, "4": "Heat", "2": 27, "3": 26})
@@ -363,6 +364,7 @@ async def test_hvac_action_heating_when_under_target(
 ) -> None:
     """Minimal-firmware (no DP 108): infer heating from temp_current<target."""
     from homeassistant.components.climate import HVACAction
+
     coordinator = init_integration.runtime_data
     coordinator.async_set_updated_data(
         DeviceState.from_dps({"1": True, "4": "Heat", "2": 30, "3": 26, "13": 0})
@@ -377,6 +379,7 @@ async def test_hvac_action_idle_when_at_target(
 ) -> None:
     """Heat mode, target reached → IDLE so the icon goes greyish, not orange."""
     from homeassistant.components.climate import HVACAction
+
     coordinator = init_integration.runtime_data
     coordinator.async_set_updated_data(
         DeviceState.from_dps({"1": True, "4": "Heat", "2": 27, "3": 27, "13": 0})
@@ -390,6 +393,7 @@ async def test_hvac_action_cooling_when_over_target(
     hass: HomeAssistant, mock_client_factory, init_integration
 ) -> None:
     from homeassistant.components.climate import HVACAction
+
     coordinator = init_integration.runtime_data
     coordinator.async_set_updated_data(
         DeviceState.from_dps({"1": True, "4": "Cool", "2": 22, "3": 25, "13": 0})
@@ -406,6 +410,7 @@ async def test_hvac_action_uses_compressor_freq_when_available(
     regardless of the temp delta (compressor may be spinning even after
     target was met, ramping down)."""
     from homeassistant.components.climate import HVACAction
+
     coordinator = init_integration.runtime_data
     # current >= target, but compressor still spinning → HEATING
     coordinator.async_set_updated_data(
@@ -433,6 +438,7 @@ async def test_hvac_action_auto_picks_direction_from_temp(
 ) -> None:
     """In Auto/HEAT_COOL the temp delta picks the action direction."""
     from homeassistant.components.climate import HVACAction
+
     coordinator = init_integration.runtime_data
     coordinator.async_set_updated_data(
         DeviceState.from_dps({"1": True, "4": "Auto", "2": 27, "3": 25, "13": 0})
@@ -484,15 +490,19 @@ async def test_async_turn_on_off_dispatch(
 ) -> None:
     """turn_on/turn_off thin wrappers route through set_hvac_mode."""
     await hass.services.async_call(
-        CLIMATE_DOMAIN, "turn_off",
-        {ATTR_ENTITY_ID: ENTITY_ID}, blocking=True,
+        CLIMATE_DOMAIN,
+        "turn_off",
+        {ATTR_ENTITY_ID: ENTITY_ID},
+        blocking=True,
     )
     mock_client_factory.set_multiple.assert_awaited_with({1: False})
 
     mock_client_factory.set_multiple.reset_mock()
     await hass.services.async_call(
-        CLIMATE_DOMAIN, "turn_on",
-        {ATTR_ENTITY_ID: ENTITY_ID}, blocking=True,
+        CLIMATE_DOMAIN,
+        "turn_on",
+        {ATTR_ENTITY_ID: ENTITY_ID},
+        blocking=True,
     )
     # _last_direction starts at HVACMode.HEAT, so turn_on restores Heat.
     mock_client_factory.set_multiple.assert_awaited_with({1: True, 4: "Heat"})
@@ -570,8 +580,10 @@ async def test_restore_state_recovers_last_direction_and_preset(
 
     mock_client_factory.set_multiple.reset_mock()
     await hass.services.async_call(
-        CLIMATE_DOMAIN, "turn_on",
-        {ATTR_ENTITY_ID: ENTITY_ID}, blocking=True,
+        CLIMATE_DOMAIN,
+        "turn_on",
+        {ATTR_ENTITY_ID: ENTITY_ID},
+        blocking=True,
     )
     mock_client_factory.set_multiple.assert_awaited_with({1: True, 4: "BoostCool"})
 

@@ -182,7 +182,7 @@ class FrameCodec:
         # prefix — at ~1/16M frames a random AES ciphertext would otherwise
         # begin with 33 2e 33 and we'd peel 15 bytes off real payload.
         if body.startswith(const.PROTOCOL_33_HEADER):
-            body = body[len(const.PROTOCOL_33_HEADER):]
+            body = body[len(const.PROTOCOL_33_HEADER) :]
         return retcode, body
 
     @staticmethod
@@ -197,9 +197,9 @@ class FrameCodec:
         # Use the full 15-byte v3.3 header; the bare 3-byte ASCII prefix
         # is a 1/16M collision target on encrypted bytes.
         if payload.startswith(const.PROTOCOL_33_HEADER):
-            return payload[len(const.PROTOCOL_33_HEADER):]
+            return payload[len(const.PROTOCOL_33_HEADER) :]
         if len(payload) >= 4 and payload[4:].startswith(const.PROTOCOL_33_HEADER):
-            return payload[4 + len(const.PROTOCOL_33_HEADER):]
+            return payload[4 + len(const.PROTOCOL_33_HEADER) :]
         return payload
 
     def decrypt_body(self, body: bytes) -> dict[str, Any]:

@@ -64,7 +64,8 @@
       "reauth_successful": "Re-authentication was successful.",
       "reconfigure_successful": "Re-configuration was successful.",
       "device_id_mismatch": "The supplied device ID does not match the original device.",
-      "unverified_host": "A LAN broadcast claimed this device is at a new IP, but the new host did not authenticate with the stored local key. The stored host was not changed."
+      "unverified_host": "A LAN broadcast claimed this device is at a new IP, but the new host did not authenticate with the stored local key. The stored host was not changed.",
+      "unsupported_product": "This Tuya device is not a recognised Poolex / Silverline heat pump (productKey does not match any known model). If you believe this is a heat pump that should be supported, please open an issue with the productKey from the logs."
     }
   },
   "entity": {

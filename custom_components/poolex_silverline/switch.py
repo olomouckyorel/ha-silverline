@@ -65,9 +65,7 @@ class SilverlineSwitch(SilverlineEntity, SwitchEntity):
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = (
-            f"{coordinator.device_info.device_id}_{description.key}"
-        )
+        self._attr_unique_id = f"{coordinator.device_info.device_id}_{description.key}"
 
     @property
     def is_on(self) -> bool | None:

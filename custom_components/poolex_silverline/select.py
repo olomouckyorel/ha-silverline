@@ -200,9 +200,7 @@ class SilverlineOperatingModeSelect(_SilverlineSelectBase):
                 translation_key="unsupported_hvac_mode",
                 translation_placeholders={"mode": option},
             )
-        await self._write(
-            {tuya_const.DP_POWER: True, tuya_const.DP_MODE: mode_string}
-        )
+        await self._write({tuya_const.DP_POWER: True, tuya_const.DP_MODE: mode_string})
         # See climate.py: the device pushes its per-mode-memory setpoint
         # ~430-500 ms after a mode change. Without this sleep, a chained
         # service call's set_temperature can be clobbered by that push.

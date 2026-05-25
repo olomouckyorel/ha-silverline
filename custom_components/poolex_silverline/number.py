@@ -93,9 +93,7 @@ class SilverlineNumber(SilverlineEntity, NumberEntity):
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = (
-            f"{coordinator.device_info.device_id}_{description.key}"
-        )
+        self._attr_unique_id = f"{coordinator.device_info.device_id}_{description.key}"
 
     @property
     def native_value(self) -> float | None:
@@ -142,9 +140,7 @@ class SilverlineNumber(SilverlineEntity, NumberEntity):
         # native_min_value/native_max_value before delegating here.
         int_value = int(round(value))
         try:
-            await self.coordinator.client.set_dp(
-                tuya_const.DP_TEMP_SET, int_value
-            )
+            await self.coordinator.client.set_dp(tuya_const.DP_TEMP_SET, int_value)
         except InvalidAuth as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,

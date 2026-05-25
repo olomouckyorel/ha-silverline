@@ -18,7 +18,9 @@ KEY = "0123456789abcdef"
 DEVICE_ID = "bf12345678abcdefghijkl"
 
 
-def _build_frame(seq: int, cmd: int, body: dict[str, Any], *, retcode: int | None = 0) -> bytes:
+def _build_frame(
+    seq: int, cmd: int, body: dict[str, Any], *, retcode: int | None = 0
+) -> bytes:
     plaintext = json.dumps(body).encode()
     ciphertext = aes_encrypt(plaintext, KEY.encode())
     payload = b""
@@ -90,12 +92,16 @@ class FakeTuyaServer:
 async def test_get_status_round_trip() -> None:
     async with FakeTuyaServer() as server:
         server.handlers[const.CMD_DP_QUERY] = lambda seq, body: _build_frame(
-            seq, const.CMD_DP_QUERY, {"devId": DEVICE_ID, "dps": {"1": True, "4": "Heat", "3": 27}}
+            seq,
+            const.CMD_DP_QUERY,
+            {"devId": DEVICE_ID, "dps": {"1": True, "4": "Heat", "3": 27}},
         )
 
         client = SilverlineClient(
-            host="127.0.0.1", port=server.port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=server.port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=2.0,
         )
         await client.connect()
@@ -184,9 +190,9 @@ async def test_poll_merges_with_prior_push_state() -> None:
                 if client.state.fan_speed == 850:
                     break
                 await asyncio.sleep(0.025)
-            assert (
-                client.state.fan_speed == 850
-            ), "push frame did not populate state.fan_speed"
+            assert client.state.fan_speed == 850, (
+                "push frame did not populate state.fan_speed"
+            )
 
             # Now poll. The DP_QUERY response omits DP 110; with merge,
             # the previously pushed fan_speed must survive. Before the
@@ -214,8 +220,10 @@ async def test_set_dp_sends_control_and_merges_state() -> None:
         )
 
         client = SilverlineClient(
-            host="127.0.0.1", port=server.port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=server.port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=2.0,
         )
         await client.connect()
@@ -236,9 +244,12 @@ async def test_set_dp_sends_control_and_merges_state() -> None:
 async def test_push_listener_receives_spontaneous_status() -> None:
     pushed: list[Any] = []
 
-    async def push_on_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def push_on_connect(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         push = _build_frame(
-            seq=999, cmd=const.CMD_STATUS,
+            seq=999,
+            cmd=const.CMD_STATUS,
             body={"dps": {"3": 31, "1": True}},
             retcode=None,
         )
@@ -255,8 +266,10 @@ async def test_push_listener_receives_spontaneous_status() -> None:
     port = server_obj.sockets[0].getsockname()[1]
     try:
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=2.0,
         )
         client.add_listener(lambda s: pushed.append(s))
@@ -287,7 +300,9 @@ async def test_invalid_auth_on_decryption_failure() -> None:
             ciphertext = aes_encrypt(plaintext, wrong_key_server_codec_key)
             payload = struct.pack(">I", 0) + ciphertext
             size = len(payload) + 8
-            header = struct.pack(">IIII", const.FRAME_PREFIX, seq, const.CMD_DP_QUERY, size)
+            header = struct.pack(
+                ">IIII", const.FRAME_PREFIX, seq, const.CMD_DP_QUERY, size
+            )
             pre = header + payload
             crc = binascii.crc32(pre) & 0xFFFFFFFF
             return pre + struct.pack(">II", crc, const.FRAME_SUFFIX)
@@ -295,8 +310,10 @@ async def test_invalid_auth_on_decryption_failure() -> None:
         server.handlers[const.CMD_DP_QUERY] = bad_response
 
         client = SilverlineClient(
-            host="127.0.0.1", port=server.port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=server.port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=2.0,
         )
         await client.connect()
@@ -309,8 +326,10 @@ async def test_invalid_auth_on_decryption_failure() -> None:
 
 async def test_connect_failure_raises_cannot_connect() -> None:
     client = SilverlineClient(
-        host="127.0.0.1", port=1,  # nothing listens on port 1
-        device_id=DEVICE_ID, local_key=KEY,
+        host="127.0.0.1",
+        port=1,  # nothing listens on port 1
+        device_id=DEVICE_ID,
+        local_key=KEY,
         request_timeout=0.5,
     )
     with pytest.raises(CannotConnect):
@@ -319,8 +338,10 @@ async def test_connect_failure_raises_cannot_connect() -> None:
 
 async def test_request_before_connect_raises() -> None:
     client = SilverlineClient(
-        host="127.0.0.1", port=1,
-        device_id=DEVICE_ID, local_key=KEY,
+        host="127.0.0.1",
+        port=1,
+        device_id=DEVICE_ID,
+        local_key=KEY,
     )
     with pytest.raises(CannotConnect):
         await client.get_status()
@@ -331,8 +352,10 @@ async def test_connection_listener_receives_connect_event() -> None:
     async with FakeTuyaServer() as server:
         events: list[bool] = []
         client = SilverlineClient(
-            host="127.0.0.1", port=server.port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=server.port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=1.0,
         )
         client.add_connection_listener(events.append)
@@ -348,8 +371,10 @@ async def test_connection_listener_unsubscribe() -> None:
     async with FakeTuyaServer() as server:
         events: list[bool] = []
         client = SilverlineClient(
-            host="127.0.0.1", port=server.port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=server.port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=1.0,
         )
         unsub = client.add_connection_listener(events.append)
@@ -446,16 +471,20 @@ async def test_reconnect_on_peer_close(monkeypatch: pytest.MonkeyPatch) -> None:
     DP_QUERY result the caller can read.
     """
     import pysilverline.client as client_mod
+
     monkeypatch.setattr(client_mod, "_RECONNECT_BACKOFF", (0.05, 0.05, 0.05))
 
     connection_count = 0
     close_first = asyncio.Event()
 
-    async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def handler(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         nonlocal connection_count
         connection_count += 1
         codec_key = KEY
         from pysilverline.protocol import FrameCodec
+
         codec = FrameCodec(codec_key)
         buf = bytearray()
         try:
@@ -471,10 +500,13 @@ async def test_reconnect_on_peer_close(monkeypatch: pytest.MonkeyPatch) -> None:
                         return
                     buf = bytearray(remainder)
                     if frame.cmd == const.CMD_DP_QUERY:
-                        writer.write(_build_frame(
-                            frame.seq, const.CMD_DP_QUERY,
-                            {"dps": {"1": True, "4": "Heat", "3": 26}},
-                        ))
+                        writer.write(
+                            _build_frame(
+                                frame.seq,
+                                const.CMD_DP_QUERY,
+                                {"dps": {"1": True, "4": "Heat", "3": 26}},
+                            )
+                        )
                         await writer.drain()
                         if connection_count == 1:
                             close_first.set()
@@ -491,8 +523,10 @@ async def test_reconnect_on_peer_close(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
         events: list[bool] = []
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=1.0,
         )
         client.add_connection_listener(events.append)
@@ -527,6 +561,7 @@ async def test_oversize_frame_header_closes_connection(
     oversize header via FrameCodec.decode and drop the socket within
     a short timeout."""
     import pysilverline.client as client_mod
+
     # Long-ish backoff so a reconnect attempt doesn't race the test.
     monkeypatch.setattr(client_mod, "_RECONNECT_BACKOFF", (5.0,))
 
@@ -563,8 +598,10 @@ async def test_oversize_frame_header_closes_connection(
     try:
         events: list[bool] = []
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=1.0,
         )
         client.add_connection_listener(events.append)
@@ -598,6 +635,7 @@ async def test_back_to_back_drops_keep_triggering_reconnects(
     place, three connections happen well inside one second.
     """
     import pysilverline.client as client_mod
+
     monkeypatch.setattr(client_mod, "_RECONNECT_BACKOFF", (0.02, 0.02, 0.02))
 
     connection_count = 0
@@ -618,8 +656,10 @@ async def test_back_to_back_drops_keep_triggering_reconnects(
     port = server.sockets[0].getsockname()[1]
     try:
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=0.2,
         )
         await client.connect()
@@ -653,6 +693,7 @@ async def test_reconnect_survives_protocol_error_in_post_reconnect_status(
     raise an unhandled task exception.
     """
     import pysilverline.client as client_mod
+
     monkeypatch.setattr(client_mod, "_RECONNECT_BACKOFF", (0.02, 0.02, 0.02))
 
     connection_count = 0
@@ -660,9 +701,7 @@ async def test_reconnect_survives_protocol_error_in_post_reconnect_status(
 
     def _bad_dps_response(seq: int) -> bytes:
         # dps is a string instead of a dict → ProtocolError in get_status.
-        return _build_frame(
-            seq, const.CMD_DP_QUERY, {"dps": "not-a-dict"}
-        )
+        return _build_frame(seq, const.CMD_DP_QUERY, {"dps": "not-a-dict"})
 
     async def handler(
         reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -718,8 +757,10 @@ async def test_reconnect_survives_protocol_error_in_post_reconnect_status(
     port = server.sockets[0].getsockname()[1]
     try:
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=1.0,
         )
         await client.connect()
@@ -783,8 +824,10 @@ async def test_disconnect_propagates_outer_cancel(
     port = server.sockets[0].getsockname()[1]
     try:
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=0.5,
         )
         await client.connect()
@@ -816,12 +859,15 @@ async def test_disconnect_cancels_reconnect_task(
 ) -> None:
     """Explicit disconnect() stops the reconnect loop mid-backoff."""
     import pysilverline.client as client_mod
+
     # Long backoffs so we definitely catch the task in flight.
     monkeypatch.setattr(client_mod, "_RECONNECT_BACKOFF", (5.0, 5.0, 5.0))
 
     connection_count = 0
 
-    async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def handler(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         nonlocal connection_count
         connection_count += 1
         # Close immediately to trigger reconnect.
@@ -835,8 +881,10 @@ async def test_disconnect_cancels_reconnect_task(
     port = server.sockets[0].getsockname()[1]
     try:
         client = SilverlineClient(
-            host="127.0.0.1", port=port,
-            device_id=DEVICE_ID, local_key=KEY,
+            host="127.0.0.1",
+            port=port,
+            device_id=DEVICE_ID,
+            local_key=KEY,
             request_timeout=1.0,
         )
         await client.connect()

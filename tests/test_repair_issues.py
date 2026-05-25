@@ -118,9 +118,7 @@ async def test_repair_issue_fires_on_push(
     # The mock's push listeners list is in mock_client_factory.listeners;
     # the coordinator registered itself in async_setup. Invoke directly.
     push_listener = mock_client_factory.listeners[0]
-    push_listener(
-        DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 1})
-    )
+    push_listener(DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 1}))
     await hass.async_block_till_done()
     assert _issue(hass, "fault_E03") is not None
 
@@ -137,9 +135,7 @@ async def test_repair_issue_fires_on_poll(
     surface no Repair issue until the first push frame arrived.
     """
     mock_client_factory.get_status = AsyncMock(
-        return_value=DeviceState.from_dps(
-            {"1": True, "4": "Heat", "3": 26, "13": 1}
-        )
+        return_value=DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 1})
     )
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=60))
     await hass.async_block_till_done()
@@ -155,18 +151,14 @@ async def test_repair_issue_clears_on_poll(
     # Seed an active issue via the push path (mirrors a real boot with
     # a fault bit set).
     push_listener = mock_client_factory.listeners[0]
-    push_listener(
-        DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 1})
-    )
+    push_listener(DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 1}))
     await hass.async_block_till_done()
     assert _issue(hass, "fault_E03") is not None
 
     # Now switch the poll path to return a clean state and tick the
     # scheduler. The override path is not exercised — only the poll path.
     mock_client_factory.get_status = AsyncMock(
-        return_value=DeviceState.from_dps(
-            {"1": True, "4": "Heat", "3": 26, "13": 0}
-        )
+        return_value=DeviceState.from_dps({"1": True, "4": "Heat", "3": 26, "13": 0})
     )
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=60))
     await hass.async_block_till_done()

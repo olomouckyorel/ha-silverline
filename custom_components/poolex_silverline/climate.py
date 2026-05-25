@@ -216,9 +216,7 @@ class SilverlineClimate(SilverlineEntity, ClimateEntity, RestoreEntity):
                 translation_placeholders={"mode": str(hvac_mode)},
             )
 
-        await self._write(
-            {tuya_const.DP_POWER: True, tuya_const.DP_MODE: mode_string}
-        )
+        await self._write({tuya_const.DP_POWER: True, tuya_const.DP_MODE: mode_string})
         # Device has per-mode setpoint memory: entering a mode triggers a
         # restore-push for that mode's last temp ~430-500 ms later, which
         # would overwrite any setpoint a chained service call writes too soon.

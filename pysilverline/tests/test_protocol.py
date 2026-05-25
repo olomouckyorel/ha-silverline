@@ -5,6 +5,7 @@ from __future__ import annotations
 import binascii
 import json
 import struct
+from typing import Any
 
 import pytest
 
@@ -35,6 +36,48 @@ def test_aes_decrypt_wrong_key() -> None:
 def test_codec_rejects_short_key() -> None:
     with pytest.raises(ValueError):
         FrameCodec("short")
+
+
+def test_pkcs7_unpad_rejects_empty_or_misaligned() -> None:
+    """The PKCS#7 unpad helper rejects empty and non-aligned buffers
+    before pad-byte inspection. The public aes_decrypt path always gives
+    it a valid multiple-of-16 because AES requires it; this guard is
+    defense in depth for anyone reusing _pkcs7_unpad directly."""
+    from pysilverline.protocol import _pkcs7_unpad
+
+    with pytest.raises(ProtocolError):
+        _pkcs7_unpad(b"")
+    with pytest.raises(ProtocolError):
+        _pkcs7_unpad(b"\x00" * 7)
+
+
+def test_aes_decrypt_rejects_corrupt_pkcs7_padding() -> None:
+    """Plaintext whose final-byte padding count doesn't match the actual
+    trailing bytes is corrupt — we must not strip a guessed prefix."""
+    # Build a 16-byte plaintext where the last byte claims pad_len=3 but
+    # the preceding two bytes are not 0x03 — classic corrupt PKCS#7.
+    bad_plain = b"X" * 13 + b"\xaa\xbb\x03"  # last 3 should be \x03\x03\x03
+    ct = _make_cipher_for_test(KEY.encode()).encryptor().update(bad_plain)
+    # Append the AES finalize() byte stream (ECB doesn't need any) and
+    # decrypt: _pkcs7_unpad will reject.
+    with pytest.raises(ProtocolError):
+        aes_decrypt(ct, KEY.encode())
+
+
+def test_aes_encrypt_rejects_wrong_size_key() -> None:
+    """A non-16-byte key at the low-level helper raises ValueError — the
+    FrameCodec ctor enforces the same invariant at the high level."""
+    with pytest.raises(ValueError):
+        aes_encrypt(b"payload", b"too-short")
+
+
+def _make_cipher_for_test(key: bytes) -> Any:
+    """Tiny helper so the corrupt-padding test can build a malformed
+    ciphertext without going through aes_encrypt (which adds correct
+    padding for us)."""
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    return Cipher(algorithms.AES(key), modes.ECB())
 
 
 def test_encode_query_no_header() -> None:
@@ -193,6 +236,21 @@ def test_decode_bad_prefix() -> None:
         codec.decode(bad)
 
 
+def test_decode_bad_suffix() -> None:
+    """A frame with the right prefix and CRC but a corrupted suffix
+    constant is a desync signal — reject so the read loop drops the
+    socket."""
+    codec = FrameCodec(KEY)
+    wire = bytearray(codec.encode(const.CMD_DP_QUERY, {"x": 1}))
+    # Zero out the suffix so it no longer matches FRAME_SUFFIX, then
+    # recompute the CRC so the suffix check is the one that fires.
+    wire[-4:] = b"\x00\x00\x00\x00"
+    new_crc = binascii.crc32(bytes(wire[:-8])) & 0xFFFFFFFF
+    wire[-8:-4] = struct.pack(">I", new_crc)
+    with pytest.raises(ProtocolError, match="bad suffix"):
+        codec.decode(bytes(wire))
+
+
 def test_decode_bad_crc() -> None:
     codec = FrameCodec(KEY)
     wire = bytearray(codec.encode(const.CMD_DP_QUERY, {"x": 1}))
@@ -254,9 +312,7 @@ def test_decode_rejects_oversize_size_field() -> None:
     hostile LAN peer trying to exhaust memory."""
     codec = FrameCodec(KEY)
     # Header with size = 0xFFFFFFFF (~4 GiB); no payload follows.
-    header = struct.pack(
-        ">IIII", const.FRAME_PREFIX, 1, const.CMD_DP_QUERY, 0xFFFFFFFF
-    )
+    header = struct.pack(">IIII", const.FRAME_PREFIX, 1, const.CMD_DP_QUERY, 0xFFFFFFFF)
     # Pad to clear the "frame too short" guard so the size check is reached.
     wire = header + b"\x00" * 8
     with pytest.raises(ProtocolError, match="frame too large"):

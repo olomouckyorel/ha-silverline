@@ -80,19 +80,14 @@ async def test_discovery_loop_logs_unexpected_exception(
     monkeypatch.setattr(
         "custom_components.poolex_silverline.discover", _broken_discover
     )
-    caplog.set_level(
-        logging.ERROR, logger="custom_components.poolex_silverline"
-    )
+    caplog.set_level(logging.ERROR, logger="custom_components.poolex_silverline")
     assert await async_setup(hass, {})
     # Give the just-spawned task a chance to run its body and hit the
     # exception handler before we inspect logs.
     for _ in range(3):
         await asyncio.sleep(0)
     await hass.async_block_till_done()
-    assert any(
-        "discovery listener crashed" in r.getMessage()
-        for r in caplog.records
-    )
+    assert any("discovery listener crashed" in r.getMessage() for r in caplog.records)
     task = hass.data[DOMAIN]["_discovery_task"]
     assert task.done()
 
@@ -212,6 +207,7 @@ async def test_async_setup_starts_discovery_task(
     """async_setup spawns a background discovery listener and tracks it
     on hass.data[DOMAIN] so duplicate setup_entry calls don't re-spawn it."""
     from custom_components.poolex_silverline.const import DOMAIN
+
     task = hass.data[DOMAIN]["_discovery_task"]
     assert task is not None
     assert not task.done()
@@ -234,9 +230,7 @@ async def test_discovery_loop_forwards_product_key(
         while True:
             yield await queue.get()
 
-    monkeypatch.setattr(
-        "custom_components.poolex_silverline.discover", _mock_discover
-    )
+    monkeypatch.setattr("custom_components.poolex_silverline.discover", _mock_discover)
 
     init_calls: list[dict] = []
 
@@ -301,9 +295,7 @@ async def test_discovery_loop_suppresses_duplicate_ip_but_refires_on_change(
         while True:
             yield await queue.get()
 
-    monkeypatch.setattr(
-        "custom_components.poolex_silverline.discover", _mock_discover
-    )
+    monkeypatch.setattr("custom_components.poolex_silverline.discover", _mock_discover)
 
     init_calls: list[dict] = []
 

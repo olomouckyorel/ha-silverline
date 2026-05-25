@@ -50,9 +50,9 @@ async def test_connection_listener_registered(
     hass: HomeAssistant, mock_client_factory, init_integration
 ) -> None:
     """Coordinator registers exactly one connection listener at setup."""
-    assert (
-        mock_client_factory.connection_listeners
-    ), "coordinator should have registered a connection listener"
+    assert mock_client_factory.connection_listeners, (
+        "coordinator should have registered a connection listener"
+    )
 
 
 async def test_entities_unavailable_on_disconnect(

@@ -118,9 +118,7 @@ async def test_reconfigure_flow_happy_path(
     assert result["step_id"] == "reconfigure"
 
     new_data = {**ENTRY_DATA, CONF_HOST: "10.0.0.99", CONF_PORT: 6669}
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], new_data
-    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], new_data)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert config_entry.data[CONF_HOST] == "10.0.0.99"
@@ -136,9 +134,7 @@ async def test_reconfigure_flow_rejects_device_id_change(
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reconfigure_flow(hass)
     new_data = {**ENTRY_DATA, CONF_DEVICE_ID: "different_device_id_22"}
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], new_data
-    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], new_data)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "device_id_mismatch"
 
@@ -357,9 +353,12 @@ async def test_discovery_logs_known_product_key(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "discovery_confirm"
     assert any(
-        "productKey=3bhylhz5zhogklel" in r.getMessage() and "known=True" in r.getMessage()
+        "productKey=3bhylhz5zhogklel" in r.getMessage()
+        and "known=True" in r.getMessage()
         for r in caplog.records
-    ), f"expected known-productKey INFO log; got {[r.getMessage() for r in caplog.records]}"
+    ), (
+        f"expected known-productKey INFO log; got {[r.getMessage() for r in caplog.records]}"
+    )
 
 
 async def test_discovery_aborts_on_unknown_product_key(
@@ -420,7 +419,9 @@ async def test_discovery_logs_missing_product_key_as_known_false(
     assert any(
         "productKey=None" in r.getMessage() and "known=False" in r.getMessage()
         for r in caplog.records
-    ), f"expected None-productKey INFO log; got {[r.getMessage() for r in caplog.records]}"
+    ), (
+        f"expected None-productKey INFO log; got {[r.getMessage() for r in caplog.records]}"
+    )
 
 
 async def test_discovery_invalid_key_re_prompts(

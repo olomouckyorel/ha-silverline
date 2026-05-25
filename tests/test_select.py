@@ -258,9 +258,7 @@ async def test_preset_while_off_is_noop(
     """Picking a preset while OFF stores no pending state on the select
     (the climate entity owns OFF→ON memory). The select just no-ops."""
     coordinator = init_integration.runtime_data
-    coordinator.async_set_updated_data(
-        DeviceState.from_dps({"1": False, "4": "Heat"})
-    )
+    coordinator.async_set_updated_data(DeviceState.from_dps({"1": False, "4": "Heat"}))
     await hass.async_block_till_done()
     mock_client_factory.set_multiple.reset_mock()
 

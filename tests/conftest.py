@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Generator
+from collections.abc import AsyncIterator, Callable, Generator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -48,14 +48,13 @@ def stub_discovery() -> Generator[None]:
     """Replace pysilverline.discover() with a no-op so the integration's
     background listener doesn't bind UDP sockets (HA's test framework
     blocks raw socket use)."""
-    async def _empty():  # pragma: no cover - generator that never yields
-        if False:
-            yield
-        await asyncio.sleep(3600)
 
-    with patch(
-        "custom_components.poolex_silverline.discover", return_value=_empty()
-    ):
+    async def _empty() -> AsyncIterator[None]:
+        await asyncio.sleep(3600)
+        if False:  # pragma: no cover  # unreachable; marks _empty as an async generator
+            yield
+
+    with patch("custom_components.poolex_silverline.discover", return_value=_empty()):
         yield
 
 
@@ -99,9 +98,7 @@ def state_pool_off() -> DeviceState:
 def state_minimal_firmware() -> DeviceState:
     """A device that exposes only DPs 1, 2, 3, 4, 13 (PC-SLP090N "minimal"
     Poolex firmware variant, verified live)."""
-    return DeviceState.from_dps(
-        {"1": True, "2": 27, "3": 28, "4": "Heat", "13": 0}
-    )
+    return DeviceState.from_dps({"1": True, "2": 27, "3": 28, "4": "Heat", "13": 0})
 
 
 @pytest.fixture
@@ -134,8 +131,8 @@ def mock_client(state_pool_running: DeviceState) -> MagicMock:
         callback: Callable[[bool], None],
     ) -> Callable[[], None]:
         connection_listeners.append(callback)
-        return (
-            lambda: connection_listeners.remove(callback)
+        return lambda: (
+            connection_listeners.remove(callback)
             if callback in connection_listeners
             else None
         )
