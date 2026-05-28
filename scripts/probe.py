@@ -7,6 +7,10 @@ also cycles through the seven DP 4 enum strings (with safety: power is
 forced OFF for the cycle, original power+mode restored on exit unless
 `--no-restore`).
 
+`access.yaml` holds the device-id and local_key — Tuya credentials that
+grant full LAN control of the heat pump. After creating the file, run
+``chmod 600 access.yaml`` so only your user can read it.
+
 Run from the repo root:
 
     python scripts/probe.py
