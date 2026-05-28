@@ -17,6 +17,7 @@ JSON body.
 from __future__ import annotations
 
 import binascii
+import hmac
 import itertools
 import json
 import struct
@@ -52,7 +53,7 @@ def _pkcs7_unpad(data: bytes) -> bytes:
     pad_len = data[-1]
     if pad_len < 1 or pad_len > _BLOCK_SIZE:
         raise ProtocolError("invalid PKCS#7 padding")
-    if data[-pad_len:] != bytes([pad_len]) * pad_len:
+    if not hmac.compare_digest(data[-pad_len:], bytes([pad_len]) * pad_len):
         raise ProtocolError("corrupt PKCS#7 padding")
     return data[:-pad_len]
 
