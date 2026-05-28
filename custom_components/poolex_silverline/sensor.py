@@ -27,22 +27,28 @@ from .entity import SilverlineEntity
 
 PARALLEL_UPDATES = 0
 
-_FAULT_OPTIONS: list[str] = [
-    "none",
-    *(name.lower() for name in tuya_const.FAULT_BIT_NAMES.values()),
-    "unknown",
-]
-
 
 def _decode_fault(raw: int | None) -> str | None:
-    if raw is None:
+    """Return every active fault bit as a comma-joined name list.
+
+    - ``None`` when DP 13 hasn't been observed yet.
+    - ``None`` when the fault bitmap is zero — the sensor surfaces as
+      "unknown" / no state which matches the OEM controller's blank
+      display when nothing is wrong.
+    - Otherwise a comma-joined list of FAULT_BIT_NAMES values in bit
+      order, plus ``"bit<n>"`` placeholders for any bits we don't have a
+      symbolic name for so a new fault on a new firmware variant still
+      surfaces instead of being silently dropped.
+    """
+    if raw is None or raw == 0:
         return None
-    if raw == 0:
-        return "none"
-    for bit, name in tuya_const.FAULT_BIT_NAMES.items():
+    names: list[str] = []
+    bit = 0
+    while (1 << bit) <= raw:
         if raw & (1 << bit):
-            return name.lower()
-    return "unknown"
+            names.append(tuya_const.FAULT_BIT_NAMES.get(bit, f"bit{bit}"))
+        bit += 1
+    return ", ".join(names)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -185,11 +191,13 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         dp_keys=("110",),
     ),
     SilverlineSensorDescription(
+        # No device_class=ENUM and no options list: _decode_fault returns
+        # a comma-joined list ("water_flow, low_pressure") when multiple
+        # bits are active, and SensorDeviceClass.ENUM only validates
+        # against a fixed string per state.
         key="fault_code",
         translation_key="fault_code",
-        device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
-        options=_FAULT_OPTIONS,
         value_fn=lambda d: _decode_fault(d.fault),
         dp_keys=("13",),
     ),

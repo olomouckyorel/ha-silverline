@@ -95,23 +95,7 @@
       "actual_frequency": { "name": "Verdichter-Istfrequenz" },
       "eev_steps": { "name": "Expansionsventil-Schritte" },
       "fan_speed": { "name": "Lüfterdrehzahl" },
-      "fault_code": {
-        "name": "Fehlercode",
-        "state": {
-          "none": "OK",
-          "e03": "E03 — Wasserdurchfluss-Schutz",
-          "e04": "E04 — Frostschutz aktiv",
-          "e05": "E05 — Hochdruckschutz",
-          "e06": "E06 — Niederdruckschutz",
-          "e09": "E09 — Kommunikationsfehler",
-          "e10": "E10 — Inverter-Kommunikationsfehler",
-          "p3": "P3 — Wassereintritts-Sensor",
-          "p4": "P4 — Wasseraustritts-Sensor",
-          "p1": "P1 — Abtau-Sensor",
-          "p7": "P7 — Verdampfer-Sensor",
-          "unknown": "Unbekannter Fehler"
-        }
-      },
+      "fault_code": { "name": "Fehlercode" },
       "runtime_today": { "name": "Laufzeit heute" }
     },
     "binary_sensor": {
@@ -121,7 +105,12 @@
       "fault_antifreeze": { "name": "Frostschutz-Fehler" },
       "fault_high_pressure": { "name": "Hochdruck-Fehler" },
       "fault_low_pressure": { "name": "Niederdruck-Fehler" },
-      "fault_communication": { "name": "Kommunikations-Fehler" }
+      "fault_communication": { "name": "Kommunikations-Fehler" },
+      "fault_inverter_comms": { "name": "Inverter-Kommunikationsfehler" },
+      "fault_inlet_sensor": { "name": "Wassereintritts-Sensor-Fehler" },
+      "fault_outlet_sensor": { "name": "Wasseraustritts-Sensor-Fehler" },
+      "fault_defrost_sensor": { "name": "Abtau-Sensor-Fehler" },
+      "fault_coil_sensor": { "name": "Verdampfer-Sensor-Fehler" }
     },
     "switch": {
       "power": { "name": "Strom" }

@@ -54,3 +54,9 @@ AUTO_TEMP_MAX: Final = 40
 # restore push ~430-500 ms later, so callers that chain set_temperature
 # after a mode change block briefly to avoid racing the restore.
 MODE_TRANSITION_SETTLE: Final = 0.7
+
+# DP 13 bit 0 (E03 water flow) self-trips for a few seconds during
+# startup before the filter pump primes, so the Repair-issue raise is
+# debounced: the bit must stay set continuously for this many seconds
+# before a Repair card surfaces. Other bits raise immediately.
+E03_DEBOUNCE_SECONDS: Final = 60.0

@@ -30,26 +30,51 @@ async def test_diagnostic_sensors_populate(
     assert state.state == "63"
 
 
-async def test_fault_code_decoded_to_enum_state(
+async def test_fault_code_zero_mask_is_unavailable(
     hass: HomeAssistant, mock_client_factory, init_integration
 ) -> None:
+    """Zero mask returns None → the entity flips to `unavailable` (the
+    SENSOR availability rule pins on a non-None value_fn). Owners care
+    about *which* bit is set; "no fault" is the absence of a state."""
     coordinator = init_integration.runtime_data
-
     coordinator.async_set_updated_data(DeviceState.from_dps({"13": 0}))
     await hass.async_block_till_done()
-    assert hass.states.get("sensor.pool_heatpump_fault_code").state == "none"
+    assert hass.states.get("sensor.pool_heatpump_fault_code").state == STATE_UNAVAILABLE
 
+
+async def test_fault_code_single_bit(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Bit 0 → "water_flow" (symbolic short name from FAULT_BIT_NAMES)."""
+    coordinator = init_integration.runtime_data
     coordinator.async_set_updated_data(DeviceState.from_dps({"13": 1}))
     await hass.async_block_till_done()
-    assert hass.states.get("sensor.pool_heatpump_fault_code").state == "e03"
+    assert hass.states.get("sensor.pool_heatpump_fault_code").state == "water_flow"
 
-    coordinator.async_set_updated_data(DeviceState.from_dps({"13": 2}))
-    await hass.async_block_till_done()
-    assert hass.states.get("sensor.pool_heatpump_fault_code").state == "e04"
 
-    coordinator.async_set_updated_data(DeviceState.from_dps({"13": 1 << 25}))
+async def test_fault_code_multi_bit_joined(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """Multiple bits collapse into a single comma-joined state in bit order."""
+    coordinator = init_integration.runtime_data
+    # bits 0 (water_flow) and 3 (low_pressure)
+    coordinator.async_set_updated_data(DeviceState.from_dps({"13": 0b1001}))
     await hass.async_block_till_done()
-    assert hass.states.get("sensor.pool_heatpump_fault_code").state == "unknown"
+    assert (
+        hass.states.get("sensor.pool_heatpump_fault_code").state
+        == "water_flow, low_pressure"
+    )
+
+
+async def test_fault_code_unknown_bit_surfaces_as_bit_n(
+    hass: HomeAssistant, mock_client_factory, init_integration
+) -> None:
+    """A set bit with no symbolic name in FAULT_BIT_NAMES still surfaces
+    so a new firmware variant doesn't silently swallow faults."""
+    coordinator = init_integration.runtime_data
+    coordinator.async_set_updated_data(DeviceState.from_dps({"13": 1 << 12}))
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.pool_heatpump_fault_code").state == "bit12"
 
 
 async def test_sensor_unavailable_when_dp_missing(

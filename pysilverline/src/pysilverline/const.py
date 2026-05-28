@@ -38,7 +38,28 @@ DP_EEV_STEPS: Final = 109
 DP_FAN_SPEED: Final = 110
 DP_WATER_PUMP: Final = 111
 
+#: Symbolic short names for the fault bitmap on DP 13. Stable across firmware
+#: variants — picked to read clearly in entity ids / sensor states without
+#: needing the user to memorise the OEM E-code table. The matching OEM codes
+#: live in ``FAULT_BIT_CODES`` so log lines and Repair issue keys can still
+#: surface them when a service technician needs the original error.
 FAULT_BIT_NAMES: Final = {
+    0: "water_flow",
+    1: "antifreeze",
+    2: "high_pressure",
+    3: "low_pressure",
+    4: "communication",
+    5: "inverter_comms",
+    6: "inlet_sensor",
+    7: "outlet_sensor",
+    8: "defrost_sensor",
+    9: "coil_sensor",
+}
+
+#: OEM service codes printed on the wired controller. Order mirrors
+#: FAULT_BIT_NAMES so callers can join the two when they need both
+#: representations (e.g. an issue title showing "Water flow (E03)").
+FAULT_BIT_CODES: Final = {
     0: "E03",
     1: "E04",
     2: "E05",

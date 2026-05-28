@@ -147,6 +147,12 @@ the mode change is applied first so your target lands under the new mode.
   sensors). Compare with the supported DPs in the device's diagnostics
   download to confirm.
 
+**Capturing a live DP dump for a bug report**
+- The repository ships `scripts/probe.py`, which reads credentials
+  from an `access.yaml` at the repo root and dumps every DP the device
+  exposes. `access.yaml` holds your Tuya local_key, so after creating
+  it run `chmod 600 access.yaml` to keep it readable only by your user.
+
 **Boost or Silent doesn't apply when in Auto**
 - This is a device limitation, not an integration bug. Switch to
   Heat or Cool first; the preset will then apply.

@@ -95,23 +95,7 @@
       "actual_frequency": { "name": "Compressor actual frequency" },
       "eev_steps": { "name": "EEV steps" },
       "fan_speed": { "name": "Fan speed" },
-      "fault_code": {
-        "name": "Fault code",
-        "state": {
-          "none": "OK",
-          "e03": "E03 — Water flow protection",
-          "e04": "E04 — Antifreeze protection",
-          "e05": "E05 — High pressure protection",
-          "e06": "E06 — Low pressure protection",
-          "e09": "E09 — Communication failure",
-          "e10": "E10 — Inverter communication failure",
-          "p3": "P3 — Inlet temperature sensor",
-          "p4": "P4 — Outlet temperature sensor",
-          "p1": "P1 — Defrost sensor",
-          "p7": "P7 — Coil sensor",
-          "unknown": "Unknown fault"
-        }
-      },
+      "fault_code": { "name": "Fault code" },
       "runtime_today": { "name": "Runtime today" }
     },
     "binary_sensor": {
@@ -121,7 +105,12 @@
       "fault_antifreeze": { "name": "Antifreeze fault" },
       "fault_high_pressure": { "name": "High pressure fault" },
       "fault_low_pressure": { "name": "Low pressure fault" },
-      "fault_communication": { "name": "Communication fault" }
+      "fault_communication": { "name": "Communication fault" },
+      "fault_inverter_comms": { "name": "Inverter communication fault" },
+      "fault_inlet_sensor": { "name": "Inlet sensor fault" },
+      "fault_outlet_sensor": { "name": "Outlet sensor fault" },
+      "fault_defrost_sensor": { "name": "Defrost sensor fault" },
+      "fault_coil_sensor": { "name": "Coil sensor fault" }
     },
     "switch": {
       "power": { "name": "Power" }

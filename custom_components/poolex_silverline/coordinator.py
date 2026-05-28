@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Final
@@ -23,7 +24,7 @@ from pysilverline import (
     const as tuya_const,
 )
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, E03_DEBOUNCE_SECONDS
 
 # Fault-bit severity for Repair issues. Operational faults (water flow,
 # antifreeze, pressure) need user attention now; sensor and comms faults
@@ -78,6 +79,12 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         # Tracks which fault codes currently have an open Repair issue so
         # we only fire create/delete when the bit actually flips.
         self._active_fault_issues: set[str] = set()
+        # Per-bit monotonic timestamp of the first sighting of an active
+        # fault. Drives the E03 debounce: bit 0 only opens a Repair issue
+        # after E03_DEBOUNCE_SECONDS of continuous activation. Entries are
+        # cleared when the bit clears so a later re-trip restarts the
+        # window from zero.
+        self._fault_first_seen: dict[int, float] = {}
         # Runtime-today accumulator state — see _tick_runtime. Stored on
         # the coordinator (not the sensor) so it survives entity reloads
         # and is reachable from diagnostics without entity lookups.
@@ -194,21 +201,47 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
     def _reconcile_fault_issues(self, state: DeviceState) -> None:
         """Create / delete HA Repair issues to match the fault bitmap.
 
-        Fault DP 13 is a 30-bit field; each set bit maps to a code in
-        pysilverline.const.FAULT_BIT_NAMES. We open one Repair issue per
-        active code and close it the moment the device clears the bit —
-        the user gets a transient, self-clearing notification stream
-        without having to dismiss each one manually.
+        Fault DP 13 is a 30-bit field; each set bit maps to an OEM service
+        code in pysilverline.const.FAULT_BIT_CODES (E03, E04, ...). We
+        open one Repair issue per active code and close it the moment the
+        device clears the bit — the user gets a transient, self-clearing
+        notification stream without having to dismiss each one manually.
+
+        Bit 0 (E03 water flow) is debounced by ``E03_DEBOUNCE_SECONDS``:
+        the spec only wants the Repair card to surface once flow has been
+        absent persistently, because the unit briefly self-trips E03 on
+        startup before the filter pump primes — raising a card in that
+        window would be noise. Other bits are immediate; they either don't
+        bounce that way or they're already informational.
         """
-        active: set[str] = set()
+        active_bits: set[int] = set()
         fault = state.fault
         if isinstance(fault, int) and fault != 0:
-            for bit, name in tuya_const.FAULT_BIT_NAMES.items():
+            for bit in tuya_const.FAULT_BIT_CODES:
                 if fault & (1 << bit):
-                    active.add(name)
-        for cleared in self._active_fault_issues - active:
+                    active_bits.add(bit)
+
+        now = time.monotonic()
+        # Drop first_seen entries for bits that are no longer set so a
+        # later re-trip restarts the debounce window from zero.
+        for bit in list(self._fault_first_seen):
+            if bit not in active_bits:
+                del self._fault_first_seen[bit]
+        for bit in active_bits:
+            self._fault_first_seen.setdefault(bit, now)
+
+        # Resolve active_bits into the set of OEM codes whose Repair issue
+        # should currently be open. Bit 0 only counts after the debounce
+        # window has elapsed; everything else counts immediately.
+        eligible_codes: set[str] = set()
+        for bit in active_bits:
+            if bit == 0 and now - self._fault_first_seen[bit] < E03_DEBOUNCE_SECONDS:
+                continue
+            eligible_codes.add(tuya_const.FAULT_BIT_CODES[bit])
+
+        for cleared in self._active_fault_issues - eligible_codes:
             ir.async_delete_issue(self.hass, DOMAIN, f"fault_{cleared}")
-        for raised in active - self._active_fault_issues:
+        for raised in eligible_codes - self._active_fault_issues:
             ir.async_create_issue(
                 self.hass,
                 DOMAIN,
@@ -219,7 +252,7 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
                 translation_key=f"fault_{raised}",
                 learn_more_url=_LEARN_MORE_URL,
             )
-        self._active_fault_issues = active
+        self._active_fault_issues = eligible_codes
 
     @callback
     def _handle_connection_change(self, connected: bool) -> None:
