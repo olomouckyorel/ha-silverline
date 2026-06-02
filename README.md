@@ -288,6 +288,24 @@ suffix becomes heat/cool. All seven modes are accessible.
   integration with extensive device YAMLs; the source for several of the
   DP mappings used here.
 
+## Development
+
+After cloning, install the git hooks once:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+This points `core.hooksPath` at the tracked `.githooks/` directory. The
+`pre-commit` hook runs the `pysilverline` protocol/client API test suite
+(Tuya **v3.3** and **v3.5**) before every commit, so a change that breaks
+either wire protocol can't land. It's the library suite only (fast, ~1–2 s);
+linting, type-checking, and the Home Assistant integration tests are left to
+CI and `scripts/platinum-gate.sh`.
+
+Bypass the hook for a single commit with `git commit --no-verify`, or set
+`SKIP_HOOK_TESTS=1` in the environment.
+
 ## Release notes
 
 The Home Assistant integration pins `pysilverline` in `manifest.json`, so

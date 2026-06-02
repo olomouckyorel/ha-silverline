@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# pre-commit — run the pysilverline protocol/client API test suite before every
+# commit, so a change that breaks the Tuya v3.3 (55AA/AES-ECB) or v3.5
+# (6699/AES-GCM) wire protocol can't land. This is the lib suite only
+# (codec + client, both versions); it deliberately does NOT run ruff/mypy or
+# the Home Assistant integration tests — keep the commit gate fast and focused.
+#
+# Install once per clone:   ./scripts/install-hooks.sh
+# Bypass for one commit:    git commit --no-verify
+# Bypass via env:           SKIP_HOOK_TESTS=1 git commit ...
+set -euo pipefail
+
+if [[ "${SKIP_HOOK_TESTS:-}" == "1" ]]; then
+  echo "pre-commit: SKIP_HOOK_TESTS=1 set — skipping API tests." >&2
+  exit 0
+fi
+
+# Resolve repo root from the hook's own location so this works regardless of
+# the directory git invokes the hook from.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LIB_DIR="${REPO_ROOT}/pysilverline"
+
+PY="${PYTHON:-python}"
+
+if ! "${PY}" -m pytest --version >/dev/null 2>&1; then
+  cat >&2 <<EOF
+pre-commit: '${PY} -m pytest' is not available.
+Install the library's dev dependencies, e.g.:
+  pip install -e '${LIB_DIR}[test]'
+Or bypass this commit with:  git commit --no-verify
+EOF
+  exit 1
+fi
+
+echo "pre-commit: running pysilverline API tests (Tuya v3.3 + v3.5)…" >&2
+# Run from inside pysilverline/ so its own pytest config applies (it disables
+# the Home Assistant pytest plugins, which the standalone lib must not load).
+if ( cd "${LIB_DIR}" && "${PY}" -m pytest tests/ -q ); then
+  echo "pre-commit: API tests passed." >&2
+  exit 0
+fi
+
+cat >&2 <<'EOF'
+
+────────────────────────────────────────────────────────────────────────
+✗ pre-commit BLOCKED: pysilverline API tests failed.
+  Fix the failing tests above, or bypass intentionally with:
+      git commit --no-verify
+────────────────────────────────────────────────────────────────────────
+EOF
+exit 1

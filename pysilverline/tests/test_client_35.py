@@ -78,6 +78,12 @@ class FakeTuya35Server:
         self.finish_decoded_with_real_key = False
         self.finish_hmac_ok = False
         self.session_key: bytes | None = None
+        # Number of TCP connections accepted — lets a test assert that the
+        # client re-handshakes on reconnect (connections >= 2).
+        self.connections = 0
+        # When True, the device hangs up right after the FIRST connection's
+        # handshake completes, forcing the client to reconnect + re-handshake.
+        self.drop_after_handshake = False
         # A writer we can push spontaneous frames through, set once connected.
         self._writer: asyncio.StreamWriter | None = None
 
@@ -99,10 +105,27 @@ class FakeTuya35Server:
         self._writer.write(wire)
         await self._writer.drain()
 
+    async def push_malformed(self) -> None:
+        """Send a session-key frame with a corrupted v3.5 suffix.
+
+        ``Frame35Codec.decode`` validates the suffix before decrypting, so this
+        raises ``ProtocolError`` in the client read loop (the clean desync-drop
+        path), not a GCM ``InvalidAuth``.
+        """
+        if self._writer is None or self.session_key is None:
+            raise RuntimeError("push before handshake complete")
+        wire = bytearray(
+            _encode_35(0x1234, const.CMD_STATUS, b'{"dps":{}}', self.session_key)
+        )
+        wire[-2] ^= 0xFF  # corrupt the 9966 suffix
+        self._writer.write(bytes(wire))
+        await self._writer.drain()
+
     async def _handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         self._writer = writer
+        self.connections += 1
         # The server's codec starts on the real key — every negotiation frame
         # (START / FINISH) MUST decode under it. We only switch after FINISH.
         codec = Frame35Codec(KEY)
@@ -160,6 +183,11 @@ class FakeTuya35Server:
                         )
                         self.session_key = session_key
                         codec.update_session_key(session_key)
+                        if self.drop_after_handshake and self.connections == 1:
+                            # Hang up on the first connection only, so the
+                            # client must reconnect and negotiate a fresh
+                            # session key on connection #2.
+                            return
                     else:
                         body = codec.split_request_payload(frame.payload)
                         decrypted = codec.decrypt_body(body) if body else {}
