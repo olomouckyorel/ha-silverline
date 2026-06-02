@@ -110,6 +110,15 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         """
         return self._runtime_today_seconds
 
+    @property
+    def active_fault_codes(self) -> frozenset[str]:
+        """Read-only view of the OEM codes with an open Repair issue.
+
+        Lets diagnostics surface the current fault set without reaching into
+        ``_active_fault_issues`` — the reconcile logic stays the sole writer.
+        """
+        return frozenset(self._active_fault_issues)
+
     async def _async_setup(self) -> None:
         try:
             await self.client.connect()

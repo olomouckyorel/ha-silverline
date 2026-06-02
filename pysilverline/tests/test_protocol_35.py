@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import struct
 
@@ -126,7 +124,7 @@ def test_frame35_encode_decode_empty_body() -> None:
 
 def test_frame35_encode_raw_roundtrip() -> None:
     codec = Frame35Codec(KEY)
-    nonce = b"\xAB" * 16
+    nonce = b"\xab" * 16
     wire = codec.encode_raw(const.SESS_KEY_NEG_START, nonce)
     frame, _ = codec.decode(wire)
     assert frame.cmd == const.SESS_KEY_NEG_START
@@ -206,7 +204,7 @@ def test_frame35_session_key_update() -> None:
     dec_codec.decode(wire)  # should not raise
 
     # After enc updates to a new session key, dec must also update
-    session_key = b"\xFF" * 16
+    session_key = b"\xff" * 16
     enc_codec.update_session_key(session_key)
     wire2 = enc_codec.encode(const.CMD_HEART_BEAT, {})
     with pytest.raises(InvalidAuth):
@@ -221,7 +219,7 @@ def test_frame35_reset_restores_real_key() -> None:
     codec = Frame35Codec(KEY)
     enc_codec = Frame35Codec(KEY)
 
-    session_key = b"\xAA" * 16
+    session_key = b"\xaa" * 16
     enc_codec.update_session_key(session_key)
     wire = enc_codec.encode(const.CMD_HEART_BEAT, {})
 

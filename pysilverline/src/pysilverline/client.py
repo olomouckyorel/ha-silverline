@@ -20,7 +20,13 @@ from .exceptions import (
     SilverlineError,
 )
 from .models import DeviceState
-from .protocol import Frame, Frame35Codec, FrameCodec, derive_session_key_35, is_invalid_auth_retcode
+from .protocol import (
+    Frame,
+    Frame35Codec,
+    FrameCodec,
+    derive_session_key_35,
+    is_invalid_auth_retcode,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -233,10 +239,15 @@ class SilverlineClient:
             return False
 
         # --- Step 3: derive session key, send SESS_KEY_NEG_FINISH (cmd 0x05) ---
+        # The FINISH frame itself is still encrypted with the REAL key — the
+        # device only switches to the session key for data frames *after* it
+        # has decoded FINISH (mirrors TinyTuya's _negotiate_session_key, where
+        # self.local_key is reassigned in finalize() only after FINISH is sent).
+        # Switching the codec before encoding FINISH would ship it under the
+        # session key, which a real device cannot decrypt → handshake fails.
         session_key = derive_session_key_35(
             local_nonce, remote_nonce, self._codec_35._real_key
         )
-        codec.update_session_key(session_key)
 
         finish_hmac = _hmac.new(
             self._codec_35._real_key, remote_nonce, hashlib.sha256
@@ -248,6 +259,9 @@ class SilverlineClient:
         except (OSError, ConnectionError):
             return False
 
+        # Only now switch to the session key — it lands before connect() starts
+        # the read loop, so there is no race with inbound data frames.
+        codec.update_session_key(session_key)
         return True
 
     @staticmethod
