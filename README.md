@@ -42,14 +42,35 @@ runtime dependency**.
 
 The Tuya schema is shared across the Poolex Silverline FI family and several
 OEM siblings; the integration is expected to work with all of them, though
-only the PC-SLP090N has been verified directly:
+only the PC-SLP090N has been verified directly against live hardware.
 
-- Poolex Silverline FI 90 / 120 / 180 / 200 (PC-SLP090N, PC-SLP120N, …)
-- Poolex JetLine Selection FI
-- Steinbach Silent Mini
-- Brustec BR series
-- Phalén Calidi XP
-- Other Poolstar-platform OEMs with a Tuya WBR3 module
+| Model | Protocol | Climate (off/heat/cool/auto) | Presets (boost/silent) | Diagnostics (DP 101–111) | Fault sensors | Status |
+|---|---|---|---|---|---|---|
+| Poolex PC-SLP090N (Silverline FI 90) | v3.3 | ✅ | ✅ | ❌ none (5-DP firmware) | ✅ | 🟢 live-verified |
+| Poolex Silverline FI 120 / 180 / 200 | v3.3 | ✅ | ✅ | ❓ firmware-dependent | ✅ | 🔵 inferred |
+| Poolex JetLine Selection FI | v3.3 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
+| Brustec BR series | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
+| Steinbach Silent Mini | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
+| Phalén Calidi XP | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
+| Nulite | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
+| Other Poolstar / Tuya WBR3 OEM | auto | ✅ | ✅ | live-detected | ✅ | ⚪ unknown |
+
+**Legend** — 🟢 live-verified · 🔵 high confidence (same OEM platform, not
+tested directly) · ⚪ unknown · ✅ present · ❌ absent · ❓ firmware-dependent
+
+- **The protocol version is auto-detected** (v3.5 is probed first, with a
+  v3.3 fallback) and can be pinned on the config entry. v3.5 is implemented
+  faithfully to the spec and tested against a TinyTuya-faithful fake, but
+  **not yet against real v3.5 hardware** — hence v3.3 / v3.5 on the OEM
+  siblings.
+- **Diagnostic DPs (101–111) are firmware-dependent, not model-dependent:**
+  the same SKU can ship full or bare depending on its firmware. The
+  integration only registers the DPs the first `DP_QUERY` returns, so missing
+  diagnostics never show up as `unavailable` clutter.
+- **°C only.** °F shifts the fault bitmap and is not supported (see
+  [Known limitations](#known-limitations)).
+- Presets `boost` / `eco` do not apply in `heat_cool` (Auto) — a device
+  limitation.
 
 ## Installation
 
