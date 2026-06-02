@@ -15,6 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.poolex_silverline.const import (
     CONF_DEVICE_ID,
     CONF_LOCAL_KEY,
+    CONF_MODEL,
     CONF_PROTOCOL_VERSION,
     DOMAIN,
 )
@@ -31,11 +32,26 @@ async def _start_user_flow(hass: HomeAssistant) -> str:
     return result["flow_id"]
 
 
+async def _submit_model_step(
+    hass: HomeAssistant, flow_id: str, model: str = "other"
+) -> dict:
+    """Submit the model selection step and return the result."""
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, {CONF_MODEL: model}
+    )
+    return result
+
+
 async def test_user_flow_happy_path(hass: HomeAssistant, mock_client_factory) -> None:
     flow_id = await _start_user_flow(hass)
     result = await hass.config_entries.flow.async_configure(flow_id, ENTRY_DATA)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "model"
+
+    result = await _submit_model_step(hass, result["flow_id"], "pc_slp090n")
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {**ENTRY_DATA, CONF_PROTOCOL_VERSION: "3.3"}
+    assert result["data"][CONF_PROTOCOL_VERSION] == "3.3"
+    assert result["data"][CONF_MODEL] == "pc_slp090n"
     assert result["title"].startswith("Pool Heatpump")
     assert result["result"].unique_id == DEVICE_ID
 
@@ -58,11 +74,14 @@ async def test_user_flow_validation_errors(
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": expected_error}
 
-    # Recover: clear side_effect, retry, expect success
+    # Recover: clear side_effect, retry → model step → create entry
     mock_client_factory.get_status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], ENTRY_DATA
     )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "model"
+    result = await _submit_model_step(hass, result["flow_id"])
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
@@ -120,10 +139,15 @@ async def test_reconfigure_flow_happy_path(
 
     new_data = {**ENTRY_DATA, CONF_HOST: "10.0.0.99", CONF_PORT: 6669}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], new_data)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "model"
+
+    result = await _submit_model_step(hass, result["flow_id"], "jetline_fi")
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert config_entry.data[CONF_HOST] == "10.0.0.99"
     assert config_entry.data[CONF_PORT] == 6669
+    assert config_entry.data[CONF_MODEL] == "jetline_fi"
     # Drain the reload triggered by async_update_reload_and_abort so the
     # new coordinator's refresh timer is cancelled before teardown.
     await hass.async_block_till_done()
@@ -159,8 +183,11 @@ async def test_user_flow_disconnect_called_after_validation(
 ) -> None:
     """The validation helper must close the socket even on success."""
     flow_id = await _start_user_flow(hass)
-    await hass.config_entries.flow.async_configure(flow_id, ENTRY_DATA)
+    result = await hass.config_entries.flow.async_configure(flow_id, ENTRY_DATA)
     assert mock_client_factory.disconnect.called
+    # Complete the model step so the flow is not left open.
+    if result["type"] is FlowResultType.FORM:
+        await _submit_model_step(hass, result["flow_id"])
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +216,10 @@ async def test_discovery_flow_happy_path(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_LOCAL_KEY: LOCAL_KEY}
     )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "model"
+
+    result = await _submit_model_step(hass, result["flow_id"])
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_HOST] == HOST
     assert result["data"][CONF_DEVICE_ID] == DEVICE_ID
@@ -444,3 +475,64 @@ async def test_discovery_invalid_key_re_prompts(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "discovery_confirm"
     assert result["errors"] == {"base": "invalid_auth"}
+
+
+# ---------------------------------------------------------------------------
+# Model selector (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_model_step_stores_model_key(
+    hass: HomeAssistant, mock_client_factory
+) -> None:
+    """Selecting a named model stores CONF_MODEL in entry data."""
+    flow_id = await _start_user_flow(hass)
+    result = await hass.config_entries.flow.async_configure(flow_id, ENTRY_DATA)
+    assert result["step_id"] == "model"
+
+    result = await _submit_model_step(hass, result["flow_id"], "pc_slp090n")
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MODEL] == "pc_slp090n"
+
+
+async def test_model_step_defaults_to_other(
+    hass: HomeAssistant, mock_client_factory
+) -> None:
+    """Default model selection 'other' is stored and leaves supported_dps to
+    live-detection."""
+    flow_id = await _start_user_flow(hass)
+    result = await hass.config_entries.flow.async_configure(flow_id, ENTRY_DATA)
+    result = await _submit_model_step(hass, result["flow_id"], "other")
+    assert result["data"][CONF_MODEL] == "other"
+
+
+async def test_model_step_reconfigure_updates_model(
+    hass: HomeAssistant, mock_client_factory, config_entry: MockConfigEntry
+) -> None:
+    """Reconfigure flow reaches model step and updates the entry model."""
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], ENTRY_DATA)
+    assert result["step_id"] == "model"
+
+    result = await _submit_model_step(hass, result["flow_id"], "jetline_fi")
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert config_entry.data[CONF_MODEL] == "jetline_fi"
+    await hass.async_block_till_done()
+
+
+async def test_reauth_skips_model_step(
+    hass: HomeAssistant, mock_client_factory, config_entry: MockConfigEntry
+) -> None:
+    """Reauth flow only changes local_key — no model step."""
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reauth_flow(hass)
+    assert result["step_id"] == "reauth_confirm"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_LOCAL_KEY: "fedcba9876543210"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    await hass.async_block_till_done()

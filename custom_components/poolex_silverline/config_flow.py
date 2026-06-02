@@ -11,6 +11,10 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -18,7 +22,15 @@ from homeassistant.helpers.selector import (
 
 from pysilverline import CannotConnect, InvalidAuth, SilverlineClient
 
-from .const import CONF_DEVICE_ID, CONF_LOCAL_KEY, CONF_PROTOCOL_VERSION, DEFAULT_PORT, DOMAIN
+from .const import (
+    CONF_DEVICE_ID,
+    CONF_LOCAL_KEY,
+    CONF_MODEL,
+    CONF_PROTOCOL_VERSION,
+    DEFAULT_PORT,
+    DEVICE_PROFILES,
+    DOMAIN,
+)
 from .util import mask_device_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,6 +88,20 @@ _DISCOVERY_CONFIRM_SCHEMA = vol.Schema(
     {vol.Required(CONF_LOCAL_KEY): _LOCAL_KEY_SELECTOR}
 )
 
+_MODEL_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_MODEL, default="other"): SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    SelectOptionDict(value=k, label=v.display_name)
+                    for k, v in DEVICE_PROFILES.items()
+                ],
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+    }
+)
+
 
 async def _validate(data: Mapping[str, Any]) -> str | None:
     """Open a connection with the supplied credentials and pull status once.
@@ -103,12 +129,16 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the user, reauth, reconfigure, and discovery flows."""
 
     VERSION = 1
-    MINOR_VERSION = 2
+    MINOR_VERSION = 3
 
     def __init__(self) -> None:
         super().__init__()
         self._discovery_host: str | None = None
         self._discovery_device_id: str | None = None
+        # Validated connection data stashed between the credentials step and
+        # the model-selection step (cleared in __init__ and reset on each new
+        # credentials submission so back-navigation is safe).
+        self._pending_data: dict[str, Any] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -119,17 +149,37 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             error, version = await self._try_validate(user_input)
             if error is None:
-                data = dict(user_input)
+                self._pending_data = dict(user_input)
                 if version is not None:
-                    data[CONF_PROTOCOL_VERSION] = version
-                return self.async_create_entry(
-                    title=f"Pool Heatpump ({user_input[CONF_HOST]})",
-                    data=data,
-                )
+                    self._pending_data[CONF_PROTOCOL_VERSION] = version
+                return await self.async_step_model()
             errors["base"] = error
 
         return self.async_show_form(
             step_id="user", data_schema=_USER_SCHEMA, errors=errors
+        )
+
+    async def async_step_model(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Second step: user picks their device model."""
+        if user_input is not None:
+            is_reconfigure = self._pending_data.pop("_reconfigure", False)
+            data = {**self._pending_data, CONF_MODEL: user_input[CONF_MODEL]}
+            if is_reconfigure:
+                entry = self._get_reconfigure_entry()
+                return self.async_update_reload_and_abort(entry, data_updates=data)
+            host = data.get(CONF_HOST, "")
+            return self.async_create_entry(
+                title=f"Pool Heatpump ({host})",
+                data=data,
+            )
+        suggested = self._pending_data.get(CONF_MODEL, "other")
+        return self.async_show_form(
+            step_id="model",
+            data_schema=self.add_suggested_values_to_schema(
+                _MODEL_SCHEMA, {CONF_MODEL: suggested}
+            ),
         )
 
     async def async_step_reauth(
@@ -170,10 +220,17 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_mismatch(reason="device_id_mismatch")
             error, version = await self._try_validate(user_input)
             if error is None:
-                updates = dict(user_input)
+                self._pending_data = dict(user_input)
                 if version is not None:
-                    updates[CONF_PROTOCOL_VERSION] = version
-                return self.async_update_reload_and_abort(entry, data_updates=updates)
+                    self._pending_data[CONF_PROTOCOL_VERSION] = version
+                # Carry existing model choice as the default suggestion.
+                self._pending_data.setdefault(
+                    CONF_MODEL, entry.data.get(CONF_MODEL, "other")
+                )
+                # Mark this as a reconfigure so async_step_model can update
+                # (not create) the entry.
+                self._pending_data["_reconfigure"] = True
+                return await self.async_step_model()
             errors["base"] = error
 
         return self.async_show_form(
@@ -324,10 +381,8 @@ class SilverlineConfigFlow(ConfigFlow, domain=DOMAIN):
             if error is None:
                 if version is not None:
                     candidate[CONF_PROTOCOL_VERSION] = version
-                return self.async_create_entry(
-                    title=f"Pool Heatpump ({self._discovery_host})",
-                    data=candidate,
-                )
+                self._pending_data = candidate
+                return await self.async_step_model()
             errors["base"] = error
         return self.async_show_form(
             step_id="discovery_confirm",

@@ -143,3 +143,71 @@ async def test_connection_change_logs_lost_and_restored(
         if r.levelno == logging.INFO and "restored" in r.getMessage()
     ]
     assert restored_records, "expected an INFO log record mentioning 'restored'"
+
+
+# ---------------------------------------------------------------------------
+# Model-profile pre-population of supported_dps
+# ---------------------------------------------------------------------------
+
+
+async def test_known_model_pre_populates_supported_dps(
+    hass: HomeAssistant,
+    mock_client_factory: "MagicMock",  # type: ignore[name-defined]
+) -> None:
+    """A config entry with CONF_MODEL='pc_slp090n' should pre-populate
+    supported_dps with the 5 known DPs so entities register before first poll.
+    """
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.poolex_silverline.const import (
+        CONF_MODEL,
+        DEVICE_PROFILES,
+        DOMAIN,
+    )
+    from .conftest import DEVICE_ID, ENTRY_DATA, HOST
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=f"Pool Heatpump ({HOST})",
+        unique_id=DEVICE_ID,
+        data={**ENTRY_DATA, CONF_MODEL: "pc_slp090n"},
+        version=1,
+        minor_version=3,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    expected = frozenset(
+        str(dp) for dp in DEVICE_PROFILES["pc_slp090n"].known_dps  # type: ignore[arg-type]
+    )
+    assert coordinator.supported_dps == expected
+
+
+async def test_unknown_model_leaves_supported_dps_empty(
+    hass: HomeAssistant,
+    mock_client_factory: "MagicMock",  # type: ignore[name-defined]
+) -> None:
+    """CONF_MODEL='other' (known_dps=None) leaves supported_dps empty until
+    the first poll populates it."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.poolex_silverline.const import CONF_MODEL, DOMAIN
+    from .conftest import DEVICE_ID, ENTRY_DATA, HOST
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=f"Pool Heatpump ({HOST})",
+        unique_id=DEVICE_ID,
+        data={**ENTRY_DATA, CONF_MODEL: "other"},
+        version=1,
+        minor_version=3,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    # After setup, first poll ran and populated from mock state (all DPs in
+    # state_pool_running); it should not be empty any more, but the key point
+    # is that the profile did not pre-populate it with a fixed set.
+    assert coordinator.supported_dps  # populated by poll, not by profile

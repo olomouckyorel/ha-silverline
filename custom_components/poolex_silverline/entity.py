@@ -7,7 +7,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pysilverline import CannotConnect, InvalidAuth
 
-from .const import DOMAIN, MANUFACTURER, MODEL
+from .const import CONF_MODEL, DEVICE_PROFILES, DOMAIN, MANUFACTURER, MODEL
 from .coordinator import SilverlineCoordinator
 
 
@@ -19,10 +19,13 @@ class SilverlineEntity(CoordinatorEntity[SilverlineCoordinator]):
     def __init__(self, coordinator: SilverlineCoordinator) -> None:
         super().__init__(coordinator)
         device_id = coordinator.device_id
+        model_key = coordinator.config_entry.data.get(CONF_MODEL, "")
+        profile = DEVICE_PROFILES.get(model_key)
+        model_name = profile.display_name if profile is not None else MODEL
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_id)},
             manufacturer=MANUFACTURER,
-            model=MODEL,
+            model=model_name,
             name="Pool Heatpump",
             serial_number=device_id,
         )

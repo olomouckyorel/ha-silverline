@@ -10,5 +10,5 @@
   "loggers": ["pysilverline", "custom_components.poolex_silverline"],
   "quality_scale": "platinum",
   "requirements": ["pysilverline==0.2.2"],
-  "version": "0.7.0"
+  "version": "0.8.0"
 }

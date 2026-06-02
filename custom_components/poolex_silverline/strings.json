@@ -52,6 +52,16 @@
         "data_description": {
           "local_key": "16-character device-specific encryption key from the Tuya cloud console."
         }
+      },
+      "model": {
+        "title": "Select device model",
+        "description": "Choose your heat pump model. This sets the correct name in Home Assistant and pre-configures which sensors are available.",
+        "data": {
+          "model": "Device model"
+        },
+        "data_description": {
+          "model": "Select your exact model for accurate sensor availability. If unsure, choose Other / Unknown — sensors will be detected automatically."
+        }
       }
     },
     "error": {

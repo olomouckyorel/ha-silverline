@@ -24,7 +24,7 @@ from pysilverline import (
     const as tuya_const,
 )
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, E03_DEBOUNCE_SECONDS
+from .const import CONF_MODEL, DEFAULT_SCAN_INTERVAL, DEVICE_PROFILES, DOMAIN, E03_DEBOUNCE_SECONDS
 
 # Fault-bit severity for Repair issues. Operational faults (water flow,
 # antifreeze, pressure) need user attention now; sensor and comms faults
@@ -73,9 +73,17 @@ class SilverlineCoordinator(DataUpdateCoordinator[DeviceState]):
         self.device_id: str = client.device_id
         self._unsub_push: Callable[[], None] | None = None
         self._unsub_connection: Callable[[], None] | None = None
-        # Set on first successful poll. Lets platforms skip entities whose
-        # backing DP this firmware variant never reports.
-        self.supported_dps: frozenset[str] = frozenset()
+        # Pre-populated from the model profile if the user selected a known
+        # model; otherwise populated on first successful poll. Lets platforms
+        # skip entities whose backing DP this firmware variant never reports.
+        model_key = config_entry.data.get(CONF_MODEL, "")
+        profile = DEVICE_PROFILES.get(model_key)
+        if profile is not None and profile.known_dps is not None:
+            self.supported_dps: frozenset[str] = frozenset(
+                str(dp) for dp in profile.known_dps
+            )
+        else:
+            self.supported_dps = frozenset()
         # Tracks which fault codes currently have an open Repair issue so
         # we only fire create/delete when the bit actually flips.
         self._active_fault_issues: set[str] = set()

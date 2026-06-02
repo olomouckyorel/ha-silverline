@@ -2,15 +2,54 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Final
 
 DOMAIN: Final = "poolex_silverline"
 MANUFACTURER: Final = "Poolex"
-MODEL: Final = "Silverline Inverter (PC-SLP090N)"
+MODEL: Final = "Silverline Inverter (PC-SLP090N)"  # legacy fallback
 
 CONF_DEVICE_ID: Final = "device_id"
 CONF_LOCAL_KEY: Final = "local_key"
 CONF_PROTOCOL_VERSION: Final = "protocol_version"
+CONF_MODEL: Final = "model"
+
+
+@dataclass(frozen=True)
+class DeviceProfile:
+    """Static descriptor for a supported heat-pump model."""
+
+    display_name: str
+    known_dps: frozenset[int] | None  # None → live-detect from first poll
+
+
+DEVICE_PROFILES: Final[dict[str, DeviceProfile]] = {
+    "pc_slp090n": DeviceProfile(
+        display_name="Poolex PC-SLP090N",
+        known_dps=frozenset({1, 2, 3, 4, 13}),  # confirmed live
+    ),
+    "jetline_fi": DeviceProfile(
+        display_name="Poolex JetLine Selection FI",
+        known_dps=frozenset({1, 2, 3, 4, 13, 101, 102, 103, 104, 105, 106,
+                              107, 108, 109, 110, 111}),
+    ),
+    "brustec_br80": DeviceProfile(
+        display_name="Brustec BR-80",
+        known_dps=None,
+    ),
+    "phalen_calidi": DeviceProfile(
+        display_name="Phalén Calidi XP",
+        known_dps=None,
+    ),
+    "nulite": DeviceProfile(
+        display_name="Nulite",
+        known_dps=None,
+    ),
+    "other": DeviceProfile(
+        display_name="Other / Unknown",
+        known_dps=None,
+    ),
+}
 
 DEFAULT_PORT: Final = 6668
 DEFAULT_SCAN_INTERVAL: Final = 30  # seconds; WBR3 reboots if polled <8s
