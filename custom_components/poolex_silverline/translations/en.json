@@ -98,7 +98,7 @@
       "exhaust_temperature": { "name": "Compressor exhaust temperature" },
       "return_temperature": { "name": "Compressor return temperature" },
       "coil_temperature": { "name": "Evaporator coil temperature" },
-      "ambient_temperature": { "name": "Outdoor ambient temperature" },
+      "ambient_temperature": { "name": "Compressor discharge temperature" },
       "inlet_temperature": { "name": "Water inlet temperature" },
       "outlet_temperature": { "name": "Water outlet temperature" },
       "target_frequency": { "name": "Compressor target frequency" },

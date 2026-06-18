@@ -88,7 +88,7 @@
       "exhaust_temperature": { "name": "Verdichter-Heißgastemperatur" },
       "return_temperature": { "name": "Verdichter-Sauggastemperatur" },
       "coil_temperature": { "name": "Verdampfertemperatur" },
-      "ambient_temperature": { "name": "Außentemperatur" },
+      "ambient_temperature": { "name": "Kompressor-Druckgastemperatur" },
       "inlet_temperature": { "name": "Wassereintrittstemperatur" },
       "outlet_temperature": { "name": "Wasseraustrittstemperatur" },
       "target_frequency": { "name": "Verdichter-Sollfrequenz" },

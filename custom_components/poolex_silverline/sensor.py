@@ -127,7 +127,7 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: d.ambient_temp,
+        value_fn=lambda d: d.discharge_temp,
         dp_keys=("104",),
     ),
     SilverlineSensorDescription(
