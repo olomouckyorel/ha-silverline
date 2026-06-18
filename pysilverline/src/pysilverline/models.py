@@ -28,6 +28,10 @@ class DeviceState:
     eev_steps: int | None = None
     fan_speed: int | None = None
     water_pump: bool | None = None
+    condensing_temp: int | None = None
+    evaporating_temp: int | None = None
+    superheat: int | None = None
+    compressor_load: int | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -46,6 +50,17 @@ class DeviceState:
         def _bool(dp: int) -> bool | None:
             value = dps.get(str(dp))
             return value if isinstance(value, bool) else None
+
+        def _pump(dp: int) -> bool | None:
+            # Some firmware variants (e.g. FI 150) send DP 111 as an integer
+            # (e.g. 320 = pump running) instead of a bool. Accept both: treat
+            # non-zero int as True, zero as False.
+            value = dps.get(str(dp))
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, int):
+                return value != 0
+            return None
 
         def _int(dp: int) -> int | None:
             value = dps.get(str(dp))
@@ -75,7 +90,11 @@ class DeviceState:
             actual_frequency=_int(const.DP_ACTUAL_FREQUENCY),
             eev_steps=_int(const.DP_EEV_STEPS),
             fan_speed=_int(const.DP_FAN_SPEED),
-            water_pump=_bool(const.DP_WATER_PUMP),
+            water_pump=_pump(const.DP_WATER_PUMP),
+            condensing_temp=_int(const.DP_CONDENSING_TEMP),
+            evaporating_temp=_int(const.DP_EVAPORATING_TEMP),
+            superheat=_int(const.DP_SUPERHEAT),
+            compressor_load=_int(const.DP_COMPRESSOR_LOAD),
             raw=dict(dps),
         )
 

@@ -45,6 +45,10 @@ DEVICE_PROFILES: Final[dict[str, DeviceProfile]] = {
         display_name="Nulite",
         known_dps=None,
     ),
+    "fi_150": DeviceProfile(
+        display_name="Poolex Silverline FI 150",
+        known_dps=None,  # live-detect; full DP set TBD once mapping is verified
+    ),
     "other": DeviceProfile(
         display_name="Other / Unknown",
         known_dps=None,

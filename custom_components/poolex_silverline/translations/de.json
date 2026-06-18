@@ -96,7 +96,11 @@
       "eev_steps": { "name": "Expansionsventil-Schritte" },
       "fan_speed": { "name": "Lüfterdrehzahl" },
       "fault_code": { "name": "Fehlercode" },
-      "runtime_today": { "name": "Laufzeit heute" }
+      "runtime_today": { "name": "Laufzeit heute" },
+      "condensing_temperature": { "name": "Kältemittel-Verflüssigungstemperatur" },
+      "evaporating_temperature": { "name": "Kältemittel-Verdampfungstemperatur" },
+      "superheat": { "name": "Kompressor-Überhitzung" },
+      "compressor_load": { "name": "Kompressor-Auslastung" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Kompressor" },

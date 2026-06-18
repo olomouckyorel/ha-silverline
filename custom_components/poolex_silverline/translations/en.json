@@ -106,7 +106,11 @@
       "eev_steps": { "name": "EEV steps" },
       "fan_speed": { "name": "Fan speed" },
       "fault_code": { "name": "Fault code" },
-      "runtime_today": { "name": "Runtime today" }
+      "runtime_today": { "name": "Runtime today" },
+      "condensing_temperature": { "name": "Refrigerant condensing temperature" },
+      "evaporating_temperature": { "name": "Refrigerant evaporating temperature" },
+      "superheat": { "name": "Compressor superheat" },
+      "compressor_load": { "name": "Compressor load" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Compressor" },

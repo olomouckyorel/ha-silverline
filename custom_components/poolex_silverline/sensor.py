@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
     EntityCategory,
     UnitOfFrequency,
@@ -200,6 +201,52 @@ SENSORS: tuple[SilverlineSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _decode_fault(d.fault),
         dp_keys=("13",),
+    ),
+    SilverlineSensorDescription(
+        key="condensing_temperature",
+        translation_key="condensing_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.condensing_temp,
+        dp_keys=("124",),
+    ),
+    SilverlineSensorDescription(
+        key="evaporating_temperature",
+        translation_key="evaporating_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.evaporating_temp,
+        dp_keys=("133",),
+    ),
+    SilverlineSensorDescription(
+        # No device_class=TEMPERATURE: superheat is a temperature difference
+        # (suction gas minus saturation), not an absolute temperature. The
+        # absolute-temperature unit-conversion formula (F = C*9/5+32) would
+        # produce a wrong value for a delta; same reasoning as temperature_delta.
+        key="superheat",
+        translation_key="superheat",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.superheat,
+        dp_keys=("132",),
+    ),
+    SilverlineSensorDescription(
+        key="compressor_load",
+        translation_key="compressor_load",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.compressor_load,
+        dp_keys=("140",),
     ),
     SilverlineSensorDescription(
         key="runtime_today",

@@ -44,6 +44,14 @@ DP_ACTUAL_FREQUENCY: Final = 108
 DP_EEV_STEPS: Final = 109
 DP_FAN_SPEED: Final = 110
 DP_WATER_PUMP: Final = 111
+# Extended diagnostic DPs observed on Silverline FI 150 firmware (v3.5).
+# Meanings are inferred from refrigeration engineering and cross-checked
+# against measured operating conditions — treat as confirmed once a user
+# verifies the values make sense on their device.
+DP_CONDENSING_TEMP: Final = 124   # refrigerant high-side saturation temp (°C)
+DP_EVAPORATING_TEMP: Final = 133  # refrigerant low-side saturation temp (°C)
+DP_SUPERHEAT: Final = 132         # compressor suction superheat (°C, can be negative)
+DP_COMPRESSOR_LOAD: Final = 140   # compressor load (%)
 
 #: Symbolic short names for the fault bitmap on DP 13. Stable across firmware
 #: variants — picked to read clearly in entity ids / sensor states without

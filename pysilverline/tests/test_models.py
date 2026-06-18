@@ -61,6 +61,32 @@ def test_from_dps_rejects_string_for_int_field() -> None:
     assert state.temp_current == 26
 
 
+def test_from_dps_accepts_nonzero_int_for_water_pump() -> None:
+    """FI 150 sends DP 111 as an integer (e.g. 320) not a bool.
+    Non-zero should map to True so the binary sensor shows 'on'."""
+    state = DeviceState.from_dps({"111": 320})
+    assert state.water_pump is True
+    assert state.raw == {"111": 320}
+
+
+def test_from_dps_accepts_zero_int_for_water_pump_as_false() -> None:
+    """Integer 0 on DP 111 should map to False (pump off), not None."""
+    state = DeviceState.from_dps({"111": 0})
+    assert state.water_pump is False
+
+
+def test_from_dps_extracts_fi150_refrigerant_dps() -> None:
+    """Extended diagnostic DPs observed on FI 150 firmware map correctly,
+    including negative values for evaporating temp and superheat."""
+    state = DeviceState.from_dps(
+        {"124": 45, "133": -8, "132": -1, "140": 80}
+    )
+    assert state.condensing_temp == 45
+    assert state.evaporating_temp == -8
+    assert state.superheat == -1
+    assert state.compressor_load == 80
+
+
 def test_from_dps_rejects_bool_for_int_field() -> None:
     """bool is a subclass of int in Python: isinstance(True, int) is True.
     The coercion must filter that explicitly so a DP that flips type
