@@ -106,7 +106,10 @@
       "eev_steps": { "name": "EEV steps" },
       "fan_speed": { "name": "Fan speed" },
       "fault_code": { "name": "Fault code" },
-      "runtime_today": { "name": "Runtime today" }
+      "runtime_today": { "name": "Runtime today" },
+      "total_operating_hours": { "name": "Total operating hours" },
+      "target_superheat": { "name": "Target superheat" },
+      "target_condensing_temperature": { "name": "Target condensing temperature" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Compressor" },

@@ -32,6 +32,9 @@ class DeviceState:
     evaporating_temp: int | None = None
     superheat: int | None = None
     compressor_load: int | None = None
+    total_hours: int | None = None
+    target_superheat: int | None = None
+    target_condensing: int | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -95,6 +98,9 @@ class DeviceState:
             evaporating_temp=_int(const.DP_EVAPORATING_TEMP),
             superheat=_int(const.DP_SUPERHEAT),
             compressor_load=_int(const.DP_COMPRESSOR_LOAD),
+            total_hours=_int(const.DP_TOTAL_HOURS),
+            target_superheat=_int(const.DP_TARGET_SUPERHEAT),
+            target_condensing=_int(const.DP_TARGET_CONDENSING),
             raw=dict(dps),
         )
 

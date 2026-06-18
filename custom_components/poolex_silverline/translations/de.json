@@ -100,7 +100,10 @@
       "condensing_temperature": { "name": "Kältemittel-Verflüssigungstemperatur" },
       "evaporating_temperature": { "name": "Kältemittel-Verdampfungstemperatur" },
       "superheat": { "name": "Kompressor-Überhitzung" },
-      "compressor_load": { "name": "Kompressor-Auslastung" }
+      "compressor_load": { "name": "Kompressor-Auslastung" },
+      "total_operating_hours": { "name": "Gesamtbetriebsstunden" },
+      "target_superheat": { "name": "Soll-Überhitzung" },
+      "target_condensing_temperature": { "name": "Soll-Verflüssigungstemperatur" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Kompressor" },

@@ -52,6 +52,9 @@ DP_CONDENSING_TEMP: Final = 124   # refrigerant high-side saturation temp (°C)
 DP_EVAPORATING_TEMP: Final = 133  # refrigerant low-side saturation temp (°C)
 DP_SUPERHEAT: Final = 132         # compressor suction superheat (°C, can be negative)
 DP_COMPRESSOR_LOAD: Final = 140   # compressor load (%)
+DP_TOTAL_HOURS: Final = 120       # cumulative operating hours since first power-on
+DP_TARGET_SUPERHEAT: Final = 137  # EEV target superheat setpoint (°C)
+DP_TARGET_CONDENSING: Final = 142 # high-side condensing temperature setpoint (°C)
 
 #: Symbolic short names for the fault bitmap on DP 13. Stable across firmware
 #: variants — picked to read clearly in entity ids / sensor states without

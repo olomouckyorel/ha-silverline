@@ -110,7 +110,10 @@
       "condensing_temperature": { "name": "Refrigerant condensing temperature" },
       "evaporating_temperature": { "name": "Refrigerant evaporating temperature" },
       "superheat": { "name": "Compressor superheat" },
-      "compressor_load": { "name": "Compressor load" }
+      "compressor_load": { "name": "Compressor load" },
+      "total_operating_hours": { "name": "Total operating hours" },
+      "target_superheat": { "name": "Target superheat" },
+      "target_condensing_temperature": { "name": "Target condensing temperature" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Compressor" },
