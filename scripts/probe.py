@@ -1,7 +1,7 @@
 """Live probe / schema-trial tool for the Poolex Silverline.
 
-Reads credentials from `access.yaml` at the repo root, connects to the
-device, dumps initial state, pokes DP 2 with its current value to provoke
+Reads credentials from `access.yaml` at the repo root (see
+`access.yaml.example`), connects to the device, dumps initial state, pokes DP 2 with its current value to provoke
 a full-state echo, and listens for push frames. With `--exercise-modes`,
 also cycles through the seven DP 4 enum strings (with safety: power is
 forced OFF for the cycle, original power+mode restored on exit unless

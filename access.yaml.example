@@ -1,0 +1,14 @@
+# Copy to access.yaml and fill in your device credentials.
+# NEVER commit access.yaml — it is listed in .gitignore.
+#
+#   cp access.yaml.example access.yaml
+#   chmod 600 access.yaml        # Linux/macOS — restrict to your user only
+#
+# Used by scripts/probe.py for live DP dumps during development.
+# Host/IP is passed separately:  python scripts/probe.py --host 192.168.1.100
+#
+# Device ID: 22-character Tuya ID (Tuya IoT Platform → Cloud → Devices)
+# Local key: 16-character encryption key (re-issued when re-paired in Smart Life)
+
+- id: "0000000000000000000000"
+  key: "0000000000000000"

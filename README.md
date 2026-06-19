@@ -6,8 +6,8 @@
 [![Last commit](https://img.shields.io/github/last-commit/christianreiss/ha-silverline)](https://github.com/christianreiss/ha-silverline/commits/main)
 
 Local-only Home Assistant integration for **Poolex Silverline FI** pool heat
-pumps (Tuya v3.3) and OEM siblings. Connects directly over LAN — **no cloud
-runtime dependency**.
+pumps (Tuya v3.3 / **v3.4** / v3.5) and OEM siblings. Connects directly over
+LAN — **no cloud runtime dependency**.
 
 ## At a glance
 
@@ -47,6 +47,7 @@ only the PC-SLP090N has been verified directly against live hardware.
 | Model | Protocol | Climate (off/heat/cool/auto) | Presets (boost/silent) | Diagnostics (DP 101–111) | Fault sensors | Status |
 |---|---|---|---|---|---|---|
 | Poolex PC-SLP090N (Silverline FI 90) | v3.3 | ✅ | ✅ | ❌ none (5-DP firmware) | ✅ | 🟢 live-verified |
+| Poolex Silverline (2026 v3.4 firmware, `wfzeiyn1ed3axxde`) | v3.4 | ✅ | ✅ | ✅ remapped DPs | ✅ | 🟢 live-verified |
 | Poolex Silverline FI 120 / 180 / 200 | v3.3 | ✅ | ✅ | ❓ firmware-dependent | ✅ | 🔵 inferred |
 | Poolex JetLine Selection FI | v3.3 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
 | Brustec BR series | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
@@ -58,11 +59,14 @@ only the PC-SLP090N has been verified directly against live hardware.
 **Legend** — 🟢 live-verified · 🔵 high confidence (same OEM platform, not
 tested directly) · ⚪ unknown · ✅ present · ❌ absent · ❓ firmware-dependent
 
-- **The protocol version is auto-detected** (v3.5 is probed first, with a
-  v3.3 fallback) and can be pinned on the config entry. v3.5 is implemented
-  faithfully to the spec and tested against a TinyTuya-faithful fake, but
-  **not yet against real v3.5 hardware** — hence v3.3 / v3.5 on the OEM
-  siblings.
+- **The protocol version is auto-detected** (v3.5 → v3.4 → v3.3) and can be
+  pinned on the config entry. v3.4 adds a session-key handshake and HMAC
+  frame authentication; v3.5 is implemented faithfully to the spec and
+  tested against a TinyTuya-faithful fake, but **not yet against real v3.5
+  hardware** — hence v3.3 / v3.5 on the OEM siblings.
+- **v3.4 firmware uses different DP numbering** for diagnostics (e.g. fan
+  RPM on DP 114 instead of 110). Select **"Poolex Silverline (Tuya v3.4 /
+  wfzeiyn1ed3axxde)"** during setup so the integration maps the correct DPs.
 - **Diagnostic DPs (101–111) are firmware-dependent, not model-dependent:**
   the same SKU can ship full or bare depending on its firmware. The
   integration only registers the DPs the first `DP_QUERY` returns, so missing
@@ -98,7 +102,13 @@ You need three pieces of information from the Tuya cloud:
 | Local key | The 16-character device-specific encryption key | Same place — re-issued whenever the device is re-paired in Smart Life |
 
 Then in HA: **Settings → Devices & Services → "Add integration" → search for
-"Poolex Silverline"** and fill in the form.
+"Poolex Silverline"** and fill in the form. If your device uses **Tuya v3.4**
+firmware (`productKey` `wfzeiyn1ed3axxde`), pick the matching model in the
+dropdown so diagnostic DPs map correctly.
+
+> **Security:** The local key grants full LAN control of the heat pump. HA
+> masks it in the setup dialog; never paste it into issues, screenshots, or
+> git commits. Use `access.yaml.example` as a template for local probing only.
 
 The integration validates the credentials and confirms it can reach the
 device before creating the config entry. A failure surfaces as
@@ -117,9 +127,12 @@ in **Settings → Devices** and choose **Reconfigure**.
 - **Polling**: every 30 seconds the integration issues a Tuya `DP_QUERY` to
   refresh the full state. Polling faster than ~8 s causes the WBR3 WiFi
   module to reboot — don't lower this.
-- **Push**: the device pushes spontaneous state changes within ~200 ms of
-  any DP changing. The integration listens for those on the persistent
-  socket and applies them immediately, so most updates feel instant.
+- **Push** (v3.3 / v3.5): the device pushes spontaneous state changes within
+  ~200 ms of any DP changing. The integration listens on the persistent
+  socket and applies them immediately.
+- **v3.4 note**: some WBR3 firmware closes the TCP socket after each
+  exchange. The client reconnects on the next poll; updates are primarily
+  polling-driven (every 30 s), not push-driven.
 
 ## Known limitations
 
@@ -169,10 +182,11 @@ the mode change is applied first so your target lands under the new mode.
   download to confirm.
 
 **Capturing a live DP dump for a bug report**
-- The repository ships `scripts/probe.py`, which reads credentials
-  from an `access.yaml` at the repo root and dumps every DP the device
-  exposes. `access.yaml` holds your Tuya local_key, so after creating
-  it run `chmod 600 access.yaml` to keep it readable only by your user.
+- Copy `access.yaml.example` to `access.yaml` at the repo root and fill in
+  your device ID and local key (never commit this file — it is gitignored).
+  Then run `python scripts/probe.py --host <ip>` to dump every DP the
+  device exposes. On Linux/macOS, run `chmod 600 access.yaml` so only your
+  user can read it.
 
 **Boost or Silent doesn't apply when in Auto**
 - This is a device limitation, not an integration bug. Switch to
@@ -301,8 +315,8 @@ suffix becomes heat/cool. All seven modes are accessible.
 
 ## Related projects
 
-- [`pysilverline`](./pysilverline) — the underlying async Tuya v3.3 client,
-  reusable outside Home Assistant.
+- [`pysilverline`](./pysilverline) — the underlying async Tuya v3.3/v3.4/v3.5
+  client, reusable outside Home Assistant.
 - [`tinytuya`](https://github.com/jasonacox/tinytuya) — generic Tuya local
   protocol library that informed parts of the protocol implementation.
 - [`tuya-local`](https://github.com/make-all/tuya-local) — community Tuya
@@ -319,8 +333,8 @@ After cloning, install the git hooks once:
 
 This points `core.hooksPath` at the tracked `.githooks/` directory. The
 `pre-commit` hook runs the `pysilverline` protocol/client API test suite
-(Tuya **v3.3** and **v3.5**) before every commit, so a change that breaks
-either wire protocol can't land. It's the library suite only (fast, ~1–2 s);
+(Tuya **v3.3**, **v3.4**, and **v3.5**) before every commit, so a change
+that breaks any wire protocol can't land. It's the library suite only (fast, ~1–2 s);
 linting, type-checking, and the Home Assistant integration tests are left to
 CI and `scripts/platinum-gate.sh`.
 

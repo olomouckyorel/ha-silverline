@@ -4,14 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from collections import OrderedDict
-from pathlib import Path
-
-# Vendored pysilverline fork (v3.4) — not yet on PyPI.
-_vendor = Path(__file__).resolve().parent / "vendor" / "pysilverline" / "src"
-if _vendor.is_dir():
-    sys.path.insert(0, str(_vendor))
 
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
