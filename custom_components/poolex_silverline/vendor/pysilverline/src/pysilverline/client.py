@@ -700,6 +700,11 @@ class SilverlineClient:
                     _LOGGER.exception("push listener raised")
 
     async def _heartbeat_loop(self) -> None:
+        # The observed Tuya v3.4 WBR3 pool firmware closes the TCP session
+        # shortly after our encrypted HEART_BEAT frame. DP pushes plus the
+        # regular 30s poll keep the connection active enough without it.
+        if self._detected_version == "3.4":
+            return
         try:
             while not self._closing and self.connected:
                 await asyncio.sleep(_HEARTBEAT_INTERVAL)
