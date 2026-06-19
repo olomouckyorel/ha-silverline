@@ -6,8 +6,8 @@
 [![Last commit](https://img.shields.io/github/last-commit/christianreiss/ha-silverline)](https://github.com/christianreiss/ha-silverline/commits/main)
 
 Local-only Home Assistant integration for **Poolex Silverline FI** pool heat
-pumps (Tuya v3.3) and OEM siblings. Connects directly over LAN — **no cloud
-runtime dependency**.
+pumps (Tuya v3.3/v3.4) and OEM siblings. Connects directly over LAN — **no
+cloud runtime dependency**.
 
 ## At a glance
 
@@ -53,16 +53,17 @@ only the PC-SLP090N has been verified directly against live hardware.
 | Steinbach Silent Mini | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
 | Phalén Calidi XP | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
 | Nulite | v3.3 / v3.5 | ✅ | ✅ | ✅ full | ✅ | 🔵 inferred |
+| Poolex Silverline / Tuya WBR3 OEM (`wfzeiyn1ed3axxde`) | v3.4 | ✅ | ✅ | ✅ full | ✅ | 🟢 live-verified |
 | Other Poolstar / Tuya WBR3 OEM | auto | ✅ | ✅ | live-detected | ✅ | ⚪ unknown |
 
 **Legend** — 🟢 live-verified · 🔵 high confidence (same OEM platform, not
 tested directly) · ⚪ unknown · ✅ present · ❌ absent · ❓ firmware-dependent
 
-- **The protocol version is auto-detected** (v3.5 is probed first, with a
-  v3.3 fallback) and can be pinned on the config entry. v3.5 is implemented
-  faithfully to the spec and tested against a TinyTuya-faithful fake, but
-  **not yet against real v3.5 hardware** — hence v3.3 / v3.5 on the OEM
-  siblings.
+- **The protocol version is auto-detected** (v3.5 is probed first, then v3.4,
+  with a v3.3 fallback) and can be pinned on the config entry. v3.5 is
+  implemented faithfully to the spec and tested against a TinyTuya-faithful
+  fake, but **not yet against real v3.5 hardware** — hence v3.3 / v3.5 on the
+  OEM siblings.
 - **Diagnostic DPs (101–111) are firmware-dependent, not model-dependent:**
   the same SKU can ship full or bare depending on its firmware. The
   integration only registers the DPs the first `DP_QUERY` returns, so missing
@@ -71,6 +72,24 @@ tested directly) · ⚪ unknown · ✅ present · ❌ absent · ❓ firmware-dep
   [Known limitations](#known-limitations)).
 - Presets `boost` / `eco` do not apply in `heat_cool` (Auto) — a device
   limitation.
+
+### Tuya v3.4 WBR3 notes
+
+The `wfzeiyn1ed3axxde` WBR3 firmware has been verified against live hardware.
+It follows the Tuya v3.4 session-key flow, but with two details that are easy
+to miss if you only test against a different firmware:
+
+- `SESS_KEY_NEG_START` and `SESS_KEY_NEG_FINISH` must be sent as encrypted
+  55AA frames using the real local key. Sending those payloads cleartext caused
+  this firmware to stop loading in Home Assistant.
+- DP writes use `CONTROL_NEW` (`0x0d`) with the v3.4 wrapper
+  `{"protocol":5,"t":...,"data":{"dps":...}}`. The device answers with a
+  cleartext-retcode empty ACK or partial `STATUS` pushes shaped as
+  `{"protocol":4,"data":{"dps":...}}`.
+
+Only DPs exposed as Home Assistant controls are written: power (DP 1), target
+temperature (DP 2), and operating mode / preset (DP 4). Diagnostic DPs such as
+fan speed, EEV steps, refrigerant temperatures, and superheat remain read-only.
 
 ## Installation
 
@@ -319,8 +338,8 @@ After cloning, install the git hooks once:
 
 This points `core.hooksPath` at the tracked `.githooks/` directory. The
 `pre-commit` hook runs the `pysilverline` protocol/client API test suite
-(Tuya **v3.3** and **v3.5**) before every commit, so a change that breaks
-either wire protocol can't land. It's the library suite only (fast, ~1–2 s);
+(Tuya **v3.3**, **v3.4**, and **v3.5**) before every commit, so a change that
+breaks a wire protocol can't land. It's the library suite only (fast, ~1–2 s);
 linting, type-checking, and the Home Assistant integration tests are left to
 CI and `scripts/platinum-gate.sh`.
 
