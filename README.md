@@ -76,6 +76,24 @@ tested directly) · ⚪ unknown · ✅ present · ❌ absent · ❓ firmware-dep
 - Presets `boost` / `eco` do not apply in `heat_cool` (Auto) — a device
   limitation.
 
+### Tuya v3.4 WBR3 notes
+
+The `wfzeiyn1ed3axxde` WBR3 firmware has been verified against live hardware.
+It follows the Tuya v3.4 session-key flow, but with two details that are easy
+to miss when testing against a different firmware:
+
+- `SESS_KEY_NEG_START` and `SESS_KEY_NEG_FINISH` must be sent as encrypted
+  55AA frames using the real local key. Sending those payloads cleartext caused
+  this firmware to stop loading in Home Assistant.
+- DP writes use `CONTROL_NEW` (`0x0d`) with the v3.4 wrapper
+  `{"protocol":5,"t":...,"data":{"dps":...}}`. The device answers with a
+  cleartext-retcode empty ACK or partial `STATUS` pushes shaped as
+  `{"protocol":4,"data":{"dps":...}}`.
+
+Only DPs exposed as Home Assistant controls are written: power (DP 1), target
+temperature (DP 2), and operating mode / preset (DP 4). Diagnostic DPs such as
+fan speed, EEV steps, refrigerant temperatures, and superheat remain read-only.
+
 ## Installation
 
 ### Via HACS (recommended)
