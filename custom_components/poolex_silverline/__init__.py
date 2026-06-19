@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from collections import OrderedDict
+from pathlib import Path
+
+# Vendored pysilverline fork (v3.4) — not yet on PyPI.
+_vendor = Path(__file__).resolve().parent / "vendor" / "pysilverline" / "src"
+if _vendor.is_dir():
+    sys.path.insert(0, str(_vendor))
 
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
@@ -13,6 +20,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from pysilverline import SilverlineClient, discover
+from pysilverline.layouts import layout_for_model
 
 from .const import CONF_DEVICE_ID, CONF_LOCAL_KEY, CONF_PROTOCOL_VERSION, DOMAIN
 from .coordinator import SilverlineConfigEntry, SilverlineCoordinator
@@ -111,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SilverlineConfigEntry) -
         device_id=entry.data[CONF_DEVICE_ID],
         local_key=entry.data[CONF_LOCAL_KEY],
         protocol_version=entry.data.get(CONF_PROTOCOL_VERSION),
+        dp_layout=layout_for_model(entry.data.get(CONF_MODEL, "")),
     )
     coordinator = SilverlineCoordinator(hass, entry, client)
     # _async_setup opens the TCP socket and registers push + connection

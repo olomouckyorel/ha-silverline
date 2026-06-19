@@ -113,7 +113,12 @@
       "compressor_load": { "name": "Compressor load" },
       "total_operating_hours": { "name": "Total operating hours" },
       "target_superheat": { "name": "Target superheat" },
-      "target_condensing_temperature": { "name": "Target condensing temperature" }
+      "target_condensing_temperature": { "name": "Target condensing temperature" },
+      "outdoor_coil_temperature": { "name": "Outdoor coil temperature" },
+      "indoor_coil_temperature": { "name": "Indoor coil temperature" },
+      "aux_valve_opening": { "name": "Auxiliary valve opening" },
+      "main_valve_opening": { "name": "Main valve opening" },
+      "water_pump_rpm": { "name": "Circulation pump speed" }
     },
     "binary_sensor": {
       "compressor_running": { "name": "Compressor" },

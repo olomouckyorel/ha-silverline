@@ -21,6 +21,7 @@ venv/
 access.yaml
 
 # Live-device probe captures (large, host-specific, regenerated as needed)
+live_dump.json
 tests/fixtures/live_*.json
 tests/fixtures/full_exercise.json
 tests/fixtures/range_probe.json
