@@ -15,6 +15,12 @@ PROTOCOL_34_HEADER: Final = PROTOCOL_VERSION_34 + b"\x00" * 12  # 15 bytes
 FRAME_PREFIX: Final = 0x000055AA
 FRAME_SUFFIX: Final = 0x0000AA55
 
+# Tuya v3.4 shares the 55AA frame envelope with v3.3 but swaps the CRC32 trailer
+# for a 32-byte HMAC-SHA256 and encrypts the version header *inside* the AES
+# ciphertext (v3.3 prepends it outside). See ``Frame34Codec``.
+PROTOCOL_VERSION_34: Final = b"3.4"
+PROTOCOL_34_HEADER: Final = PROTOCOL_VERSION_34 + b"\x00" * 12  # 15 bytes
+
 FRAME_PREFIX_35: Final = 0x00006699
 FRAME_SUFFIX_35: Final = 0x00009966
 
@@ -26,28 +32,29 @@ CMD_CONTROL: Final = 0x07
 CMD_STATUS: Final = 0x08
 CMD_HEART_BEAT: Final = 0x09
 CMD_DP_QUERY: Final = 0x0A
-CMD_CONTROL_NEW: Final = 0x0D
+CMD_CONTROL_NEW: Final = 0x0D   # v3.4 "device22" control write (protocol:5 wrapper)
 CMD_DP_QUERY_NEW: Final = 0x10
 CMD_DP_REFRESH: Final = 0x12
 
 CMDS_WITHOUT_HEADER: Final = frozenset({CMD_DP_QUERY})
 
-# v3.4 encrypts the version header inside the AES blob for most cmds; these
-# are sent bare (mirrors TinyTuya NO_PROTOCOL_HEADER_CMDS for 3.4).
-CMDS_WITHOUT_HEADER_V34: Final = frozenset(
+#: v3.4 omits the inner version header for these commands (mirrors TinyTuya's
+#: ``NO_PROTOCOL_HEADER_CMDS``). Among the commands this client sends, CONTROL
+#: and CONTROL_NEW carry the header; everything else — DP_QUERY(_NEW),
+#: heartbeat, refresh, and the three session-negotiation frames — does not.
+#: Confirmed against real v3.4 WBR3 pool firmware (productKey wfzeiyn1ed3axxde,
+#: contributed by Martin Čarek / @olomouckyorel).
+CMDS_34_WITHOUT_HEADER: Final = frozenset(
     {
         CMD_DP_QUERY,
         CMD_DP_QUERY_NEW,
         CMD_HEART_BEAT,
+        CMD_DP_REFRESH,
         SESS_KEY_NEG_START,
         SESS_KEY_NEG_RESP,
         SESS_KEY_NEG_FINISH,
     }
 )
-
-# Some Tuya v3.4 peers send cleartext START/FINISH; Poolex WBR3 pool firmware
-# (productKey wfzeiyn1ed3axxde) expects encrypted handshake frames instead.
-CMDS_CLEARTEXT_PAYLOAD_V34: Final = frozenset()
 
 DP_POWER: Final = 1
 DP_TEMP_SET: Final = 2

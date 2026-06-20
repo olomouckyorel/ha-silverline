@@ -1,8 +1,13 @@
 """Per-firmware DP layouts — maps semantic fields to Tuya DP numbers.
 
-The wfzeiyn1ed3axxde / Tuya v3.4 pool firmware uses different DP numbering
-than the legacy JetLine / PC-SLP090N layout. Names verified against the
-Tuya IoT Platform Czech UI and cross-checked with live LAN dumps (2026-06).
+The ``wfzeiyn1ed3axxde`` / Tuya v3.4 pool firmware uses different DP numbering
+than the legacy JetLine / PC-SLP090N layout (e.g. fan speed lives on DP 114, not
+DP 110, and the suction/outlet sensors are swapped). Names verified against the
+Tuya IoT Platform UI and cross-checked with live LAN dumps (2026-06).
+
+The v3.4 layout and its DP numbering were contributed by Martin Čarek
+(@olomouckyorel, PR #3) from a real Poolex Silverline v3.4 device — the only
+v3.4 hardware these mappings have been validated against.
 """
 
 from __future__ import annotations
@@ -37,14 +42,14 @@ class DpLayout:
     target_condensing: int | None = 142
 
 
-# Legacy JetLine / Brustec / PC-SLP090N numbering (pysilverline const.py).
+#: Legacy JetLine / Brustec / PC-SLP090N numbering (matches the ``DP_*``
+#: constants in :mod:`pysilverline.const`).
 LAYOUT_STANDARD = DpLayout()
 
-# Poolex pool heat pump, productKey wfzeiyn1ed3axxde, protocol v3.4.
-# Tuya IoT names (CZ):
-#   101 teplota výstupní vody, 102 环温, 105 venkovní cívka,
-#   106 vratný plyn, 108 vnitřní cívka, 109 hlavní ventil,
-#   110 pomocný ventil, 114 rychlost větru (ot/min).
+#: Poolex pool heat pump, productKey ``wfzeiyn1ed3axxde``, protocol v3.4.
+#: Tuya IoT field names (CZ):
+#:   101 outlet water temp, 102 ambient, 105 outdoor coil, 106 return gas,
+#:   108 indoor coil, 109 main valve, 110 aux valve, 114 fan speed (rpm).
 LAYOUT_V34_WFZEIYN = DpLayout(
     outlet_temp=101,
     ambient_temp=102,
@@ -76,6 +81,7 @@ LAYOUT_BY_NAME: dict[str, DpLayout] = {
 
 
 def layout_for_model(model_key: str) -> DpLayout:
+    """Return the DP layout for a config-entry model key (default: standard)."""
     if model_key == "silverline_v34":
         return LAYOUT_V34_WFZEIYN
     return LAYOUT_STANDARD

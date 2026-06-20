@@ -20,13 +20,14 @@ from .exceptions import (
     ProtocolError,
     SilverlineError,
 )
-from .layouts import DpLayout, LAYOUT_STANDARD
+from .layouts import LAYOUT_STANDARD, DpLayout
 from .models import DeviceState
 from .protocol import (
     Frame,
     Frame34Codec,
     Frame35Codec,
     FrameCodec,
+    aes_decrypt,
     derive_session_key_34,
     derive_session_key_35,
     is_invalid_auth_retcode,
@@ -56,18 +57,37 @@ def _close_writer_silent(writer: asyncio.StreamWriter) -> None:
         pass
 
 
+def _unwrap_dps(decoded: Any) -> dict[str, Any]:
+    """Extract the ``dps`` mapping from a decoded device body.
+
+    v3.4 ``device22`` firmware wraps DPs as ``{"data": {"dps": {...}}}`` while
+    v3.3 / v3.5 (and most v3.4 query responses) put them at the top level.
+    Accept either shape.
+    """
+    if not isinstance(decoded, dict):
+        return {}
+    data = decoded.get("data")
+    if isinstance(data, dict):
+        inner = data.get("dps")
+        if isinstance(inner, dict):
+            return inner
+    dps = decoded.get("dps", {})
+    return dps if isinstance(dps, dict) else {}
+
+
 class SilverlineClient:
-    """Async client for one Tuya device (v3.3, v3.4, or v3.5, auto-detected).
+    """Async client for one Tuya device (v3.3, v3.4 or v3.5, auto-detected).
 
     Lifecycle: ``connect()`` opens a persistent socket, runs the v3.4/v3.5
-    handshake if applicable, and starts a background reader.
+    session-key handshake if applicable, and starts a background reader.
     ``get_status`` / ``set_dp`` / ``set_multiple`` issue commands.
     Spontaneous DP pushes are forwarded to listeners registered via
     ``add_listener``.  ``disconnect()`` shuts everything down.
 
-    Pass ``protocol_version="3.3"``, ``"3.4"``, or ``"3.5"`` to pin the
-    version; omit it (or pass ``None``) to auto-probe — v3.5 is tried first,
-    then v3.4, then v3.3.
+    Pass ``protocol_version="3.3"``, ``"3.4"`` or ``"3.5"`` to pin the version;
+    omit it (or pass ``None``) to auto-probe — v3.5 is tried first, then v3.4,
+    then plain v3.3. The detected version sticks across reconnects so the probe
+    runs at most once.
     """
 
     def __init__(
@@ -86,6 +106,9 @@ class SilverlineClient:
         self.device_id = device_id
         self._timeout = request_timeout
         self._protocol_version = protocol_version  # None = auto-probe
+        # Maps semantic DeviceState fields onto wire DP numbers; firmwares with
+        # non-standard numbering (e.g. the v3.4 wfzeiyn pool firmware) pass a
+        # custom layout. Defaults to the legacy numbering.
         self._dp_layout = dp_layout or LAYOUT_STANDARD
 
         self._codec_33 = FrameCodec(local_key)
@@ -133,52 +156,14 @@ class SilverlineClient:
         self._closing = False
         self._connection_lost_handled = False
 
-        # Reset session-key codecs before each new connection so a stale session
-        # key from a previous TCP session is never reused.
+        # Reset the session-key codecs to the real key before each new
+        # connection so a stale session key from a previous TCP session is
+        # never reused.
         self._codec_34.reset()
         self._codec_35.reset()
 
         reader, writer = await self._open_tcp()
-
-        pinned = self._protocol_version
-        detected = self._detected_version
-
-        try:
-            if pinned == "3.3" or detected == "3.3":
-                self._codec = self._codec_33
-                self._detected_version = "3.3"
-            elif pinned == "3.5" or detected == "3.5":
-                if not await self._handshake_35(reader, writer):
-                    raise CannotConnect(f"v3.5 handshake with {self.host} failed")
-                self._codec = self._codec_35
-                self._detected_version = "3.5"
-            elif pinned == "3.4" or detected == "3.4":
-                if not await self._handshake_34(reader, writer):
-                    raise CannotConnect(f"v3.4 handshake with {self.host} failed")
-                self._codec = self._codec_34
-                self._detected_version = "3.4"
-            else:
-                # Auto-probe: 3.5 → 3.4 → 3.3 (fresh TCP socket per attempt).
-                if await self._handshake_35(reader, writer):
-                    self._codec = self._codec_35
-                    self._detected_version = "3.5"
-                else:
-                    _close_writer_silent(writer)
-                    reader, writer = await self._open_tcp()
-                    if await self._handshake_34(reader, writer):
-                        self._codec = self._codec_34
-                        self._detected_version = "3.4"
-                    else:
-                        _close_writer_silent(writer)
-                        reader, writer = await self._open_tcp()
-                        self._codec = self._codec_33
-                        self._detected_version = "3.3"
-        except InvalidAuth:
-            _close_writer_silent(writer)
-            raise
-        except Exception:
-            _close_writer_silent(writer)
-            raise
+        reader, writer = await self._negotiate(reader, writer)
 
         self._reader = reader
         self._writer = writer
@@ -201,16 +186,96 @@ class SilverlineClient:
         except (OSError, asyncio.TimeoutError) as err:
             raise CannotConnect(f"connect {self.host}:{self.port}: {err}") from err
 
+    async def _negotiate(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Select the protocol version, running a handshake where required.
+
+        Sets ``self._codec`` and ``self._detected_version`` and returns the
+        ``(reader, writer)`` to use — possibly a *fresh* pair, since a failed
+        probe can leave the original socket unusable. Raises CannotConnect or
+        InvalidAuth when a pinned or previously-confirmed version fails.
+
+        Resolution order:
+          * pinned / already-confirmed v3.3 → no handshake;
+          * pinned / already-confirmed v3.4 or v3.5 → that handshake only,
+            failing loudly (and surfacing wrong-key as InvalidAuth);
+          * unpinned, nothing confirmed yet → blind probe v3.5 → v3.4 → v3.3,
+            each on a fresh socket so a poisoned probe never taints the next.
+        """
+        pinned = self._protocol_version
+        # `_detected_version` holds the pinned value, or the version confirmed on
+        # a prior connect — either way a known version skips the blind probe.
+        known = self._detected_version
+
+        handshakes = (
+            ("3.5", self._codec_35, self._handshake_35),
+            ("3.4", self._codec_34, self._handshake_34),
+        )
+
+        if pinned == "3.3" or (pinned is None and known == "3.3"):
+            self._codec = self._codec_33
+            self._detected_version = "3.3"
+            return reader, writer
+
+        # A specific handshake version is required (pinned to it, or confirmed
+        # on an earlier connection so reconnects re-handshake the same version).
+        for ver, codec, handshake in handshakes:
+            if pinned == ver or (pinned is None and known == ver):
+                try:
+                    ok = await handshake(reader, writer, probe=False)
+                except Exception:
+                    _close_writer_silent(writer)
+                    raise
+                if ok:
+                    self._codec = codec
+                    self._detected_version = ver
+                    return reader, writer
+                _close_writer_silent(writer)
+                raise CannotConnect(f"v{ver} handshake with {self.host} failed")
+
+        # Blind auto-probe: try each handshake, then fall back to plain v3.3.
+        for ver, codec, handshake in handshakes:
+            try:
+                ok = await handshake(reader, writer, probe=True)
+            except Exception:
+                # Only a v3.5 wrong-key (InvalidAuth) reaches here — its 6699
+                # framing already proved the device is v3.5, so we must NOT
+                # swallow it into a v3.3 fallback. v3.4 swallows its own
+                # ambiguous auth failures internally (probe=True → False).
+                _close_writer_silent(writer)
+                raise
+            if ok:
+                self._codec = codec
+                self._detected_version = ver
+                return reader, writer
+            # Probe failed → the socket may be poisoned; open a fresh one for
+            # the next protocol. The penalty is paid once: the detected version
+            # sticks and future reconnects skip straight to it.
+            _close_writer_silent(writer)
+            _LOGGER.debug("v%s probe failed for %s; trying next protocol", ver, self.host)
+            reader, writer = await self._open_tcp()
+
+        self._codec = self._codec_33
+        self._detected_version = "3.3"
+        return reader, writer
+
     async def _handshake_35(
         self,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
+        *,
+        probe: bool = False,
     ) -> bool:
         """Perform the v3.5 three-message session-key negotiation.
 
-        Returns True on success.  Propagates InvalidAuth (wrong key).
+        Returns True on success.  Propagates InvalidAuth (wrong key) regardless
+        of ``probe``: the 6699 prefix already proves the peer speaks v3.5, so a
+        decrypt failure is unambiguously a bad key, never a v3.3 device.
         Returns False on any other failure (wrong protocol version, timeout,
-        network error) so the caller can fall back to v3.3.
+        network error) so the caller can fall back.
         """
         local_nonce = os.urandom(16)
         codec = self._codec_35
@@ -384,6 +449,112 @@ class SilverlineClient:
             except IncompleteFrame:
                 continue
 
+    async def _handshake_34(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        *,
+        probe: bool,
+    ) -> bool:
+        """Perform the v3.4 three-message session-key negotiation.
+
+        Returns True on success. A wrong key shows up as the device's RESP
+        failing to authenticate (its keyed HMAC trailer won't verify under our
+        derived real key): when v3.4 is *required* (``probe=False``) that
+        surfaces as InvalidAuth → reauth; during a *blind probe*
+        (``probe=True``) it is swallowed to False so the caller can fall back —
+        v3.3 shares the 55AA framing and would also fail to authenticate here,
+        so an auth failure mid-probe cannot be assumed to mean "wrong key".
+        Any non-auth failure (wrong version, timeout, network) returns False.
+        """
+        local_nonce = os.urandom(16)
+        codec = self._codec_34
+        real_key = self._codec_34._real_key
+
+        # --- Step 1: send SESS_KEY_NEG_START (cmd 0x03) ---
+        # The nonce is AES-ECB-encrypted with the real key (v3.4 encrypts every
+        # frame, handshake included) but carries no version header.
+        try:
+            writer.write(codec.encode_raw(const.SESS_KEY_NEG_START, local_nonce))
+            await writer.drain()
+        except (OSError, ConnectionError):
+            return False
+
+        # --- Step 2: receive SESS_KEY_NEG_RESP (cmd 0x04) ---
+        buf = bytearray()
+        try:
+            frame = await asyncio.wait_for(
+                self._recv_34_frame(reader, codec, buf),
+                timeout=_HANDSHAKE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            return False
+        except InvalidAuth:
+            # The frame's keyed HMAC trailer did not verify. Required → wrong
+            # key (reauth); probe → most likely not a v3.4 device, fall back.
+            if probe:
+                return False
+            raise
+        except Exception:
+            return False
+
+        if frame.cmd != const.SESS_KEY_NEG_RESP:
+            return False
+
+        # Decrypt RESP → remote_nonce(16) + HMAC-SHA256(real_key, local_nonce)(32).
+        # An unencrypted 4-byte retcode may prefix the ciphertext (present iff
+        # the payload length is 4 over a 16-byte boundary).
+        raw = frame.payload
+        if len(raw) % 16 == 4:
+            raw = raw[4:]
+        try:
+            plaintext = aes_decrypt(raw, real_key)
+        except (ProtocolError, ValueError):
+            if probe:
+                return False
+            raise InvalidAuth("v3.4 RESP decrypt failed — local_key likely wrong")
+        if len(plaintext) < 48:
+            return False
+        remote_nonce = plaintext[:16]
+        expected_hmac = _hmac.new(real_key, local_nonce, hashlib.sha256).digest()
+        if not _hmac.compare_digest(expected_hmac, plaintext[16:48]):
+            _LOGGER.debug("v3.4 handshake inner-HMAC mismatch for %s", self.host)
+            return False
+
+        # --- Step 3: derive session key, send SESS_KEY_NEG_FINISH (cmd 0x05) ---
+        # FINISH is still encrypted/authenticated with the REAL key; the codec
+        # switches to the session key only AFTER it is on the wire (mirrors
+        # _handshake_35 and TinyTuya, where local_key is reassigned in
+        # finalize() only once FINISH has been sent).
+        session_key = derive_session_key_34(local_nonce, remote_nonce, real_key)
+        finish_hmac = _hmac.new(real_key, remote_nonce, hashlib.sha256).digest()
+        try:
+            writer.write(codec.encode_raw(const.SESS_KEY_NEG_FINISH, finish_hmac))
+            await writer.drain()
+        except (OSError, ConnectionError):
+            return False
+
+        codec.update_session_key(session_key)
+        return True
+
+    @staticmethod
+    async def _recv_34_frame(
+        reader: asyncio.StreamReader,
+        codec: Frame34Codec,
+        buf: bytearray,
+    ) -> Frame:
+        """Accumulate bytes from ``reader`` until one complete v3.4 frame decodes."""
+        while True:
+            chunk = await reader.read(4096)
+            if not chunk:
+                raise CannotConnect("connection closed during handshake")
+            buf.extend(chunk)
+            try:
+                frame, _ = codec.decode(bytes(buf))
+                return frame
+            except IncompleteFrame:
+                continue
+
     async def disconnect(self) -> None:
         """Close the connection and stop background tasks.
 
@@ -490,7 +661,7 @@ class SilverlineClient:
         if retcode not in (None, 0):
             raise SilverlineError(f"DP_QUERY failed retcode=0x{retcode:08x}")
         decoded = self._codec.decrypt_body(ciphertext)
-        dps = decoded.get("dps", {}) if isinstance(decoded, dict) else {}
+        dps = _unwrap_dps(decoded)
         if not isinstance(dps, dict):
             raise ProtocolError(f"unexpected dps payload: {decoded!r}")
         # Merge rather than replace: some Tuya firmware variants only
@@ -512,11 +683,11 @@ class SilverlineClient:
             return
         dps = {str(k): v for k, v in values.items()}
         if self._detected_version == "3.4":
-            # Tuya v3.4 (device22-style) uses CONTROL_NEW with a protocol
-            # wrapper. The cloud IoT UI exposes the same operation as
-            # code/value pairs (e.g. switch/temp_set), but the local LAN API
-            # still sends raw DP ids inside data.dps.
-            body = {
+            # v3.4 "device22" firmware (e.g. the wfzeiyn pool pump) accepts
+            # writes via CONTROL_NEW with a protocol-5 wrapper. The local LAN
+            # API still carries raw DP ids inside ``data.dps`` — confirmed on
+            # real v3.4 hardware (contributed by @olomouckyorel).
+            body: dict[str, Any] = {
                 "protocol": 5,
                 "t": int(time.time()),
                 "data": {"dps": dps},
@@ -544,7 +715,13 @@ class SilverlineClient:
 
     async def _request(self, cmd: int, body: dict[str, Any]) -> Frame:
         if not self.connected:
-            await self.connect()
+            if self._detected_version == "3.4":
+                # v3.4 sockets are request-scoped: the device closes TCP after
+                # each response (see _read_loop), so reconnect lazily here on the
+                # next request rather than running a heartbeat/backoff loop.
+                await self.connect()
+            else:
+                raise CannotConnect("not connected")
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Frame] = loop.create_future()
 
@@ -621,15 +798,17 @@ class SilverlineClient:
                         # or vice versa. Stop draining and wait for the
                         # next read to fill the gap.
                         break
-                    except ProtocolError as err:
-                        # Bad prefix / suffix / CRC / oversize means we
-                        # are desynchronized (or talking to something
-                        # hostile). There is no safe recovery from
-                        # mid-stream garbage, so drop the connection and
-                        # let the reconnect path re-establish a fresh
-                        # session.
+                    except (ProtocolError, InvalidAuth) as err:
+                        # Bad prefix / suffix / CRC / oversize (ProtocolError)
+                        # means we are desynchronized. A keyed-MAC / AEAD
+                        # failure (InvalidAuth) on the v3.4/v3.5 codecs *after*
+                        # a successful handshake is wire corruption, not a wrong
+                        # key — the session key already proved itself — so it is
+                        # the same desync, not a reauth trigger. Either way there
+                        # is no safe recovery from mid-stream garbage: drop and
+                        # let the reconnect path re-establish a fresh session.
                         _LOGGER.warning(
-                            "dropping connection on malformed frame: %s", err
+                            "dropping connection on bad frame: %s", err
                         )
                         buf.clear()
                         drop_connection = True
@@ -654,24 +833,25 @@ class SilverlineClient:
                 and not drop_connection
                 and not self._closing
             ):
-                # TinyTuya's default v3.4 flow treats sockets as
-                # request-scoped. The WBR3 pool firmware mirrors that by
-                # closing TCP after a response. Keep entities available and
-                # reconnect lazily on the next request instead of surfacing a
-                # one-second unavailable blip every poll.
+                # The v3.4 WBR3 pool firmware closes TCP after each response
+                # (request-scoped sockets, like TinyTuya's default v3.4 flow).
+                # Treat a clean peer-close as idle: tear the socket down quietly
+                # and let the next request reconnect lazily (see _request),
+                # instead of flapping the connection-lost listener and reconnect
+                # backoff — which would otherwise blip "unavailable" every poll.
                 writer = self._writer
                 if writer is not None:
                     _close_writer_silent(writer)
                 self._reader = None
                 self._writer = None
-                return
-            self._on_connection_dropped()
+            else:
+                self._on_connection_dropped()
 
     def _take_pending(self, cmd: int, seq: int) -> asyncio.Future[Frame] | None:
         """Pop the request future a response with ``(cmd, seq)`` belongs to.
 
-        v3.3 devices echo our request seqno, so an exact ``(seq, cmd)``
-        match is unambiguous.
+        v3.3/v3.4 devices echo our request seqno, so an exact ``(seq, cmd)``
+        match is unambiguous — it is always tried first, for every version.
 
         v3.4 and v3.5 devices instead answer with their own global,
         monotonically increasing seqno that bears no relation to the
@@ -680,10 +860,16 @@ class SilverlineClient:
         v3.5. For those versions we correlate by cmd alone, resolving the
         OLDEST outstanding request of that cmd.
 
-        Limitation (v3.5 only): with no seqno to reject on, a late response to a
-        timed-out request can resolve a *later* same-cmd request's future. This
-        is benign here — our requests are full-state snapshots (DP_QUERY) or
-        idempotent writes (CONTROL), self-correcting on the next poll — and
+        The same cmd-only fallback is enabled for v3.4 as insurance: the
+        ``version < 3.5`` gate says v3.4 echoes the seqno (so the exact match
+        above already wins on real silicon, and the fallback never fires), but
+        we have no v3.4 hardware to confirm it. If some v3.4 firmware turned out
+        not to echo, this keeps it usable instead of timing out on every poll.
+
+        Limitation (fallback path only): with no seqno to reject on, a late
+        response to a timed-out request can resolve a *later* same-cmd request's
+        future. Benign here — our requests are full-state snapshots (DP_QUERY)
+        or idempotent writes (CONTROL), self-correcting on the next poll — and
         tinytuya is looser still (no correlation at all).
         """
         entry = self._pending.get(seq)
@@ -750,8 +936,11 @@ class SilverlineClient:
             except (InvalidAuth, ProtocolError):
                 _LOGGER.debug("ignoring undecryptable push frame")
                 return
-            # Ack CONTROL before the empty-dps early return — v3.4 often
-            # sends several partial STATUS frames (one DP at a time).
+            dps = _unwrap_dps(decoded)
+            # v3.4 firmware often acks a CONTROL_NEW write by echoing state via
+            # a STATUS push (sometimes several partial frames, one DP at a time)
+            # rather than a dedicated ACK frame. Resolve any outstanding write
+            # here, before the empty-dps early return below.
             if self._detected_version == "3.4":
                 fut = self._take_pending(const.CMD_CONTROL_NEW, frame.seq)
                 if fut is not None and not fut.done():
@@ -772,9 +961,10 @@ class SilverlineClient:
                     _LOGGER.exception("push listener raised")
 
     async def _heartbeat_loop(self) -> None:
-        # The observed Tuya v3.4 WBR3 pool firmware closes the TCP session
-        # shortly after our encrypted HEART_BEAT frame. DP pushes plus the
-        # regular 30s poll keep the connection active enough without it.
+        # The observed v3.4 WBR3 pool firmware closes the TCP session shortly
+        # after an encrypted HEART_BEAT. v3.4 sockets are request-scoped (we
+        # reconnect lazily per poll, see _request/_read_loop), so a heartbeat
+        # would only churn the connection — skip it entirely.
         if self._detected_version == "3.4":
             return
         try:

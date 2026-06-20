@@ -1,4 +1,5 @@
-"""Tuya local protocol frame codecs for v3.3, v3.4, and v3.5.
+"""Tuya local protocol frame codecs for v3.3, v3.4 (both 55AA/AES-ECB) and v3.5
+(6699/AES-GCM).
 
 v3.3 frame on the wire:
 
@@ -7,10 +8,16 @@ v3.3 frame on the wire:
 with `size = N + 8`. CRC32 is computed over everything before the CRC bytes.
 All multi-byte integers are big-endian.
 
-v3.4 uses the same 55AA wire layout as v3.3, but every TCP connection
-requires a 3-message session-key handshake (cmds 0x03/0x04/0x05) before data
-frames. The version header (``3.4`` + 12 NUL bytes) is encrypted inside the
-AES-ECB blob. See ``Frame34Codec`` and ``derive_session_key_34``.
+v3.4 frame on the wire:
+
+    [prefix:4][seq:4][cmd:4][size:4][payload:N][hmac_sha256:32][suffix:4]
+
+with `size = N + 36`. The CRC32 is replaced by a keyed 32-byte HMAC-SHA256 over
+everything before it. Like v3.5, every TCP connection runs a 3-message
+session-key handshake (cmds 0x03/0x04/0x05); unlike v3.5 the cipher is AES-ECB
+and the derived session key is `AES-ECB(real_key, local_nonce XOR remote_nonce)`.
+The version header is encrypted *inside* the AES ciphertext (v3.3 keeps it
+outside). See `Frame34Codec` and `derive_session_key_34`.
 
 v3.5 frame on the wire:
 
@@ -266,8 +273,11 @@ def is_invalid_auth_retcode(retcode: int | None) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Tuya local protocol v3.4 — AES-128-ECB / 55AA frames + session key
+# Tuya local protocol v3.4 — AES-128-ECB / 55AA frames with HMAC-SHA256 trailer
 # ---------------------------------------------------------------------------
+
+_HMAC_FOOTER_FMT = ">32sI"  # hmac-sha256(32), suffix(4)
+_HMAC_FOOTER_SIZE = struct.calcsize(_HMAC_FOOTER_FMT)  # 36 bytes
 
 
 def derive_session_key_34(
@@ -275,31 +285,31 @@ def derive_session_key_34(
 ) -> bytes:
     """Derive the v3.4 per-connection session key from the exchanged nonces.
 
-    XOR nonces, AES-ECB-encrypt the 16-byte result with the real key (no
-    padding). Mirrors TinyTuya's ``_negotiate_session_key_generate_finalize``
-    for v3.4.
+    XOR the two 16-byte nonces and AES-ECB-encrypt the result with the real
+    key — no padding, no IV, a single 16-byte block out. Mirrors TinyTuya's
+    ``_negotiate_session_key_generate_finalize`` for v3.4
+    (``cipher.encrypt(local_nonce ^ remote_nonce, use_base64=False, pad=False)``).
+    Differs from :func:`derive_session_key_35`, which uses GCM with an IV slice.
     """
     xored = bytes(a ^ b for a, b in zip(local_nonce, remote_nonce))
-    return aes_encrypt_block(xored, real_key)
+    encryptor = _make_cipher(real_key).encryptor()
+    return encryptor.update(xored) + encryptor.finalize()
 
 
 class Frame34Codec:
-    """Encodes and decodes Tuya local protocol v3.4 (55AA / AES-ECB) frames.
+    """Encodes and decodes Tuya local protocol v3.4 (55AA / AES-ECB + HMAC) frames.
 
-    Holds both the real device key and the current session key (derived during
-    the per-connection handshake). Call ``update_session_key`` after the
-    handshake completes; call ``reset`` before each new TCP connection.
+    Structurally v3.3 with two changes: the CRC32 trailer becomes a keyed
+    32-byte HMAC-SHA256, and the version header is encrypted *inside* the AES
+    ciphertext rather than prepended outside it. Both the AES payload and the
+    HMAC trailer use the *current* key: the real device key during the
+    per-connection handshake, the derived session key afterwards.
 
-    Unlike v3.3, v3.4 replaces the 4-byte CRC footer with a 32-byte
-    HMAC-SHA256 over ``header || payload`` (authenticated with the active key).
-    Inbound frames also carry a cleartext 4-byte retcode between the header
-    and the ciphertext. The optional ``3.4`` version header is encrypted
-    together with the JSON body.
+    Call ``update_session_key`` after the handshake completes and ``reset``
+    before each new TCP connection so the next handshake starts on the real key.
+    Mirrors the public surface of :class:`FrameCodec` / :class:`Frame35Codec`
+    so :class:`~pysilverline.client.SilverlineClient` needs no version branching.
     """
-
-    _FOOTER_FMT = ">32sI"  # hmac(32) + suffix(4)
-    _FOOTER_SIZE = struct.calcsize(_FOOTER_FMT)
-    _RETCODE_SIZE = 4
 
     def __init__(self, local_key: str) -> None:
         self._real_key = local_key.encode("utf-8")
@@ -318,130 +328,84 @@ class Frame34Codec:
 
     @staticmethod
     def extract_seq_from_wire(wire: bytes) -> int:
+        # 55AA header: prefix(4) + seq(4) + …
         return int.from_bytes(wire[4:8], "big")
 
-    def next_seq(self) -> int:
-        return next(self._seq)
-
     def encode(self, cmd: int, body: dict[str, Any]) -> bytes:
+        """Build a 55AA HMAC frame with JSON-serialised ``body``.
+
+        For commands outside ``CMDS_34_WITHOUT_HEADER`` (in practice only
+        CONTROL) the 15-byte version header is prepended to the plaintext
+        *before* encryption, matching the device firmware.
+        """
         plaintext = json.dumps(body, separators=(",", ":")).encode("utf-8")
-        return self._build_frame(cmd, plaintext, encrypt=True)
+        if cmd not in const.CMDS_34_WITHOUT_HEADER:
+            plaintext = const.PROTOCOL_34_HEADER + plaintext
+        ciphertext = aes_encrypt(plaintext, self._key)
+        return self._build_frame(cmd, ciphertext)
 
     def encode_raw(self, cmd: int, payload: bytes) -> bytes:
-        """Build a 55AA frame for the v3.4 handshake (AES-encrypted payload)."""
-        return self._build_frame(cmd, payload, encrypt=True)
+        """Build a 55AA HMAC frame from a raw (header-less) payload.
 
-    def _build_frame(self, cmd: int, plaintext: bytes, *, encrypt: bool) -> bytes:
-        if cmd not in const.CMDS_WITHOUT_HEADER_V34:
-            blob = const.PROTOCOL_34_HEADER + plaintext
-        else:
-            blob = plaintext
-        if encrypt and cmd not in const.CMDS_CLEARTEXT_PAYLOAD_V34:
-            body_bytes_payload = aes_encrypt(blob, self._key)
-        else:
-            body_bytes_payload = blob
-        seq = self.next_seq()
-        size = len(body_bytes_payload) + self._FOOTER_SIZE
+        Used for the handshake frames: the payload (a nonce or an HMAC digest)
+        is AES-ECB-encrypted with the current key but carries no version header.
+        """
+        return self._build_frame(cmd, aes_encrypt(payload, self._key))
+
+    def _build_frame(self, cmd: int, ciphertext: bytes) -> bytes:
+        seq = next(self._seq)
+        size = len(ciphertext) + _HMAC_FOOTER_SIZE
         header = struct.pack(_HEADER_FMT, const.FRAME_PREFIX, seq, cmd, size)
-        body_bytes = header + body_bytes_payload
-        mac = hmac.new(self._key, body_bytes, hashlib.sha256).digest()
-        return body_bytes + struct.pack(self._FOOTER_FMT, mac, const.FRAME_SUFFIX)
+        pre_hmac = header + ciphertext
+        mac = hmac.new(self._key, pre_hmac, hashlib.sha256).digest()
+        return pre_hmac + struct.pack(_HMAC_FOOTER_FMT, mac, const.FRAME_SUFFIX)
 
-    def decode(
-        self, data: bytes, *, cleartext_retcode: bool | None = None
-    ) -> tuple[Frame, bytes]:
-        if len(data) < _HEADER_SIZE + self._FOOTER_SIZE:
+    def decode(self, data: bytes) -> tuple[Frame, bytes]:
+        """Decode the first complete 55AA HMAC frame from ``data``.
+
+        The returned ``payload`` is the raw inner bytes (an optional 4-byte
+        retcode followed by ciphertext) — exactly like :meth:`FrameCodec.decode`,
+        decryption is deferred to ``decrypt_body``. Raises ``IncompleteFrame``
+        when more bytes are needed, ``ProtocolError`` on structural violations
+        (bad prefix/suffix/oversize) and ``InvalidAuth`` when the keyed HMAC
+        trailer does not verify (wrong key, or — far rarer — wire corruption).
+        """
+        if len(data) < _HEADER_SIZE + _HMAC_FOOTER_SIZE:
             raise IncompleteFrame("header not yet complete")
         prefix, seq, cmd, size = struct.unpack(_HEADER_FMT, data[:_HEADER_SIZE])
         if prefix != const.FRAME_PREFIX:
             raise ProtocolError(f"bad prefix 0x{prefix:08x}")
         if size > _MAX_FRAME_SIZE:
             raise ProtocolError(f"frame too large: {size}")
+        # A v3.4 frame must be at least large enough for its own trailer. A
+        # smaller `size` is a foreign frame (e.g. a v3.3 device's CRC reply to
+        # our handshake probe); reject it cleanly instead of slicing past the
+        # header into a negative payload window.
+        if size < _HMAC_FOOTER_SIZE:
+            raise ProtocolError(f"frame too small: {size}")
         total = _HEADER_SIZE + size
         if len(data) < total:
             raise IncompleteFrame(f"need {total - len(data)} more bytes")
 
-        authenticated_end = total - self._FOOTER_SIZE
-        mac, suffix = struct.unpack(
-            self._FOOTER_FMT, data[authenticated_end:total]
-        )
+        payload_end = total - _HMAC_FOOTER_SIZE
+        payload = data[_HEADER_SIZE:payload_end]
+        mac, suffix = struct.unpack(_HMAC_FOOTER_FMT, data[payload_end:total])
         if suffix != const.FRAME_SUFFIX:
             raise ProtocolError(f"bad suffix 0x{suffix:08x}")
-
-        if cleartext_retcode is None:
-            if (
-                cmd == const.CMD_CONTROL_NEW
-                and size == self._FOOTER_SIZE + self._RETCODE_SIZE
-            ):
-                # v3.4 CONTROL_NEW ACK can be just a cleartext retcode with
-                # no encrypted JSON body.
-                cleartext_retcode = True
-            else:
-                cleartext_retcode = self._frame_has_cleartext_retcode(
-                    data, size, authenticated_end, mac
-                )
-
-        if cleartext_retcode:
-            retcode = struct.unpack(
-                ">I", data[_HEADER_SIZE : _HEADER_SIZE + self._RETCODE_SIZE]
-            )[0]
-            payload_bytes = data[
-                _HEADER_SIZE + self._RETCODE_SIZE : authenticated_end
-            ]
-        else:
-            retcode = 0
-            payload_bytes = data[_HEADER_SIZE:authenticated_end]
-
-        expected_mac = hmac.new(
-            self._key, data[:authenticated_end], hashlib.sha256
-        ).digest()
-        if not hmac.compare_digest(mac, expected_mac):
+        expected = hmac.new(self._key, data[:payload_end], hashlib.sha256).digest()
+        if not hmac.compare_digest(mac, expected):
             raise InvalidAuth("HMAC mismatch — local_key likely wrong")
-
-        if not payload_bytes:
-            decrypted = b""
-        elif cmd in const.CMDS_CLEARTEXT_PAYLOAD_V34:
-            decrypted = payload_bytes
-        else:
-            try:
-                decrypted = aes_decrypt(payload_bytes, self._key)
-            except (ProtocolError, ValueError) as err:
-                raise InvalidAuth("decryption failed — local_key likely wrong") from err
-
-        if decrypted.startswith(const.PROTOCOL_34_HEADER):
-            decrypted = decrypted[len(const.PROTOCOL_34_HEADER) :]
-
-        inner = struct.pack(">I", retcode) + decrypted
-        return Frame(seq=seq, cmd=cmd, payload=inner), data[total:]
-
-    def _frame_has_cleartext_retcode(
-        self, data: bytes, size: int, authenticated_end: int, mac: bytes
-    ) -> bool:
-        """Guess whether the peer prefixed a cleartext retcode after the header.
-
-        Outbound client frames omit it; most inbound device frames include it.
-        Both layouts HMAC ``header || [retcode] || ciphertext`` — pick the
-        variant whose ciphertext length is a valid AES block multiple.
-        """
-        for with_retcode in (True, False):
-            retcode_len = self._RETCODE_SIZE if with_retcode else 0
-            ct_len = size - self._FOOTER_SIZE - retcode_len
-            if ct_len <= 0 or ct_len % _BLOCK_SIZE != 0:
-                continue
-            ct_start = _HEADER_SIZE + retcode_len
-            ct_end = ct_start + ct_len
-            if ct_end != authenticated_end:
-                continue
-            expected = hmac.new(
-                self._key, data[:authenticated_end], hashlib.sha256
-            ).digest()
-            if hmac.compare_digest(mac, expected):
-                return with_retcode
-        # Default to device-style framing if neither variant looks valid.
-        return True
+        return Frame(seq=seq, cmd=cmd, payload=payload), data[total:]
 
     @staticmethod
     def split_response_payload(cmd: int, payload: bytes) -> tuple[int | None, bytes]:
+        """Peel a 4-byte (unencrypted) retcode off a response payload.
+
+        Only device→client response frames carry a retcode, and it sits between
+        the header and the ciphertext (covered by the HMAC, not encrypted). The
+        version header — unlike v3.3 — lives *inside* the ciphertext, so it is
+        stripped later by ``decrypt_body``, not here.
+        """
         retcode: int | None = None
         body = payload
         if cmd in (
@@ -450,28 +414,53 @@ class Frame34Codec:
             const.CMD_DP_QUERY,
             const.CMD_DP_REFRESH,
         ):
-            if len(body) >= 4:
+            # AES-ECB ciphertext length is always a multiple of 16; a 4-byte
+            # retcode prefix is therefore present iff len % 16 == 4. This also
+            # covers the v3.4 CONTROL_NEW bare-ACK (a 4-byte cleartext retcode
+            # with no JSON body → len == 4 → empty ciphertext after the peel).
+            if len(body) % _BLOCK_SIZE == 4:
                 retcode = struct.unpack(">I", body[:4])[0]
                 body = body[4:]
         return retcode, body
 
     @staticmethod
     def split_request_payload(payload: bytes) -> bytes:
-        if len(payload) > 4 and payload[0:1] != b"{" and payload[4:5] == b"{":
+        """Strip an optional 4-byte retcode prefix off a push frame payload.
+
+        Real firmwares prefix spontaneous STATUS pushes with a zero retcode just
+        like responses. The ciphertext that follows is a multiple of 16, so the
+        retcode is unambiguously present iff ``len(payload) % 16 == 4``.
+        """
+        if len(payload) % _BLOCK_SIZE == 4:
             return payload[4:]
         return payload
 
-    @staticmethod
-    def decrypt_body(body: bytes) -> dict[str, Any]:
+    def decrypt_body(self, body: bytes) -> dict[str, Any]:
+        """AES-ECB-decrypt a ciphertext body, strip the v3.4 header, parse JSON.
+
+        Empty bodies return ``{}``. A decryption failure raises ``InvalidAuth``
+        (wrong key → reauth); a clean decrypt that yields non-JSON raises
+        ``ProtocolError`` (transient corruption, key is fine) — same contract as
+        :meth:`FrameCodec.decrypt_body`.
+        """
         if not body:
             return {}
         try:
-            parsed = json.loads(body)
+            plaintext = aes_decrypt(body, self._key)
+        except (ProtocolError, ValueError) as err:
+            raise InvalidAuth("decryption failed — local_key likely wrong") from err
+        # The version header is encrypted in v3.4, so it surfaces here (inside
+        # the plaintext) rather than in split_*_payload. Valid JSON starts with
+        # '{', so a leading "3.4" is unambiguously the header.
+        if plaintext.startswith(const.PROTOCOL_34_HEADER):
+            plaintext = plaintext[len(const.PROTOCOL_34_HEADER) :]
+        try:
+            parsed = json.loads(plaintext)
         except (UnicodeDecodeError, json.JSONDecodeError) as err:
-            raise ProtocolError("v3.4 payload is not JSON") from err
+            raise ProtocolError("decrypted payload is not JSON") from err
         if not isinstance(parsed, dict):
             raise ProtocolError(
-                f"v3.4 payload is not a JSON object: {type(parsed).__name__}"
+                f"decrypted payload is not a JSON object: {type(parsed).__name__}"
             )
         return parsed
 

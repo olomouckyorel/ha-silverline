@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import const
-from .layouts import DpLayout, LAYOUT_STANDARD
+from .layouts import LAYOUT_STANDARD, DpLayout
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -46,13 +46,31 @@ class DeviceState:
     def from_dps(
         cls, dps: dict[str, Any], *, layout: DpLayout = LAYOUT_STANDARD
     ) -> DeviceState:
-        """Build a DeviceState from a Tuya ``dps`` mapping (string keys)."""
+        """Build a DeviceState from a Tuya `dps` mapping (string keys).
 
-        def _bool(dp: int) -> bool | None:
+        ``layout`` maps the diagnostic/sensor fields onto wire DP numbers; it
+        defaults to the legacy layout so existing callers are unaffected. A
+        firmware that does not expose a field sets it to ``None`` in the layout,
+        which yields ``None`` here regardless of what the wire carries.
+
+        Coerces each DP through a type filter rather than trusting the wire
+        payload — a malformed frame or a firmware that ships a string where we
+        expect an int would otherwise propagate into entity arithmetic and break
+        consumers in surprising ways. The defensive choice for a DP whose value
+        does not match its declared type is to expose it as None and keep the
+        raw dict intact for diagnostics.
+        """
+
+        def _bool(dp: int | None) -> bool | None:
+            if dp is None:
+                return None
             value = dps.get(str(dp))
             return value if isinstance(value, bool) else None
 
         def _pump(dp: int | None) -> bool | None:
+            # Some firmware variants (e.g. FI 150) send DP 111 as an integer
+            # (e.g. 320 = pump running) instead of a bool. Accept both: treat
+            # non-zero int as True, zero as False.
             if dp is None:
                 return None
             value = dps.get(str(dp))
@@ -62,6 +80,16 @@ class DeviceState:
                 return value != 0
             return None
 
+        def _pump_rpm(dp: int | None) -> int | None:
+            # Integer view of the same DP for firmwares that report pump speed
+            # (rpm) rather than a simple on/off flag.
+            if dp is None:
+                return None
+            value = dps.get(str(dp))
+            if isinstance(value, bool):
+                return None
+            return value if isinstance(value, int) else None
+
         def _int(dp: int | None) -> int | None:
             if dp is None:
                 return None
@@ -70,7 +98,9 @@ class DeviceState:
                 return None
             return value if isinstance(value, int) else None
 
-        def _str(dp: int) -> str | None:
+        def _str(dp: int | None) -> str | None:
+            if dp is None:
+                return None
             value = dps.get(str(dp))
             return value if isinstance(value, str) else None
 
@@ -116,5 +146,7 @@ class DeviceState:
     def merge(
         self, dps: dict[str, Any], *, layout: DpLayout = LAYOUT_STANDARD
     ) -> DeviceState:
+        """Return a new state with `dps` overlaid onto the current `raw` dict."""
+
         merged = {**self.raw, **dps}
         return DeviceState.from_dps(merged, layout=layout)

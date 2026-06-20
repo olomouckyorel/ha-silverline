@@ -65,7 +65,7 @@ _KNOWN_POOLEX_PRODUCT_KEYS: frozenset[str] = frozenset(
         "wgpg4qdqg8dd3xtx",  # Brustec BR-80
         "qrlLaHWwIsZsV31f",  # Phalén Calidi XP
         "bf911310efade7bc43mzsm",  # Nulite (house-heating sibling)
-        "wfzeiyn1ed3axxde",  # Poolex Silverline (Tuya v3.4 firmware, 2026)
+        "wfzeiyn1ed3axxde",  # Poolex Silverline (Tuya v3.4 firmware, 2026) — @olomouckyorel
     }
 )
 
@@ -107,8 +107,8 @@ _MODEL_SCHEMA = vol.Schema(
 async def _validate(data: Mapping[str, Any]) -> str | None:
     """Open a connection with the supplied credentials and pull status once.
 
-    Returns the detected protocol version (e.g. ``"3.3"``, ``"3.4"``, or ``"3.5"``) on
-    success.  Raises CannotConnect or InvalidAuth on failure.  Always closes
+    Returns the detected protocol version (``"3.3"``, ``"3.4"`` or ``"3.5"``)
+    on success.  Raises CannotConnect or InvalidAuth on failure.  Always closes
     the socket before returning.
     """
     client = SilverlineClient(

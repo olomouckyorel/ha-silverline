@@ -1,4 +1,4 @@
-"""Async client for Poolex Silverline / Tuya pool heat pumps (v3.3, v3.4, and v3.5)."""
+"""Async client for Poolex Silverline / Tuya pool heat pumps (v3.3, v3.4, v3.5)."""
 
 from __future__ import annotations
 
@@ -26,4 +26,4 @@ __all__ = [
     "discover_once",
 ]
 
-__version__ = "0.3.6"
+__version__ = "0.4.1"
