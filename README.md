@@ -1,5 +1,10 @@
 # Poolex Silverline — Home Assistant integration
 
+> **Superseded — use upstream.** Live v3.4 / WBR3 findings from this fork were
+> merged into **[christianreiss/ha-silverline](https://github.com/christianreiss/ha-silverline)**
+> (**v0.9.1+**). For HACS and new installs, use upstream — not this fork.
+> Verified on real hardware (productKey `wfzeiyn1ed3axxde`, June 2026).
+
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Integration-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange)](https://hacs.xyz/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
